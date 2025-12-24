@@ -8,7 +8,12 @@ from modules.music_theory.cadences import CadenceType
 from modules.music_theory.progression import ChordProgressionGenerator
 
 # Initialize progression generator (singleton for app lifetime)
-generator = ChordProgressionGenerator(min_length=4, max_length=8)
+generator = ChordProgressionGenerator(
+    min_length=4,
+    max_length=8,
+    use_voice_leading=True,  # Enable automatic voice leading
+    use_sevenths=True         # Enable 7th chords
+)
 
 # UI Layout
 app_ui = ui.page_fluid(

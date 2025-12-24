@@ -6,6 +6,7 @@ from typing import List
 
 from .notes import Chord
 from .cadences import CadenceType, CadencePattern
+from .voice_leading import VoiceLeader
 
 
 class ChordProgressionGenerator:
@@ -32,16 +33,21 @@ class ChordProgressionGenerator:
         (3, 1),   # iii → I (uncommon)
     ]
 
-    def __init__(self, min_length: int = 4, max_length: int = 8):
+    def __init__(self, min_length: int = 4, max_length: int = 8, use_voice_leading: bool = True, use_sevenths: bool = True):
         """
         Initialize the generator.
 
         Args:
             min_length: Minimum number of chords in progression
             max_length: Maximum number of chords in progression
+            use_voice_leading: Apply automatic voice leading (default True)
+            use_sevenths: Use 7th chords where appropriate (default True)
         """
         self.min_length = min_length
         self.max_length = max_length
+        self.use_voice_leading = use_voice_leading
+        self.use_sevenths = use_sevenths
+        self.voice_leader = VoiceLeader() if use_voice_leading else None
 
     def generate_progression(self, cadence_type: CadenceType) -> List[Chord]:
         """
@@ -66,9 +72,12 @@ class ChordProgressionGenerator:
         intro_chords = self._generate_intro(intro_length, penultimate_degree, cadence_type)
 
         # Create the cadence chords
+        # V chords often use 7th for stronger resolution
+        penult_seventh = self.use_sevenths and penultimate_degree == 5
+
         cadence_chords = [
-            Chord(penultimate_degree),
-            Chord(final_degree)
+            Chord(penultimate_degree, use_seventh=penult_seventh),
+            Chord(final_degree, use_seventh=False)  # Final chord usually triad
         ]
 
         # Combine and return
@@ -92,9 +101,9 @@ class ChordProgressionGenerator:
 
         intro_chords = []
 
-        # Always start with I (tonic) to establish key
+        # Always start with I (tonic) to establish key - use triad for stability
         current_degree = 1
-        intro_chords.append(Chord(current_degree))
+        intro_chords.append(Chord(current_degree, use_seventh=False))
 
         # Generate middle chords
         for i in range(1, length):
@@ -105,7 +114,9 @@ class ChordProgressionGenerator:
                 # Generate a good next chord
                 next_degree = self._choose_next_chord(current_degree, cadence_type)
 
-            intro_chords.append(Chord(next_degree))
+            # Use 7th chords for ii, V, vi, vii
+            use_seventh = self.use_sevenths and next_degree in [2, 5, 6, 7]
+            intro_chords.append(Chord(next_degree, use_seventh=use_seventh))
             current_degree = next_degree
 
         return intro_chords
@@ -195,12 +206,17 @@ class ChordProgressionGenerator:
         Returns:
             List of lists, where each inner list contains MIDI notes for one chord
         """
-        midi_progression = []
-        for chord in progression:
-            # Use octave 4 (middle C region) for a comfortable piano range
-            midi_notes = chord.to_midi_notes(base_octave=4)
-            midi_progression.append(midi_notes)
-        return midi_progression
+        if self.use_voice_leading and self.voice_leader:
+            # Apply voice leading algorithm
+            return self.voice_leader.voice_progression(progression)
+        else:
+            # Original behavior: root position, no voice leading
+            midi_progression = []
+            for chord in progression:
+                # Use octave 4 (middle C region) for a comfortable piano range
+                midi_notes = chord.to_midi_notes(base_octave=4)
+                midi_progression.append(midi_notes)
+            return midi_progression
 
     def progression_to_symbols(self, progression: List[Chord]) -> List[str]:
         """
