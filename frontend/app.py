@@ -2,9 +2,13 @@
 ABRSM Grade 8 Cadence Training - Shiny for Python Frontend
 """
 from shiny import App, ui, render, reactive
-from modules import api_client
-import asyncio
+import random
 from pathlib import Path
+from modules.music_theory.cadences import CadenceType
+from modules.music_theory.progression import ChordProgressionGenerator
+
+# Initialize progression generator (singleton for app lifetime)
+generator = ChordProgressionGenerator(min_length=4, max_length=8)
 
 # UI Layout
 app_ui = ui.page_fluid(
@@ -84,7 +88,6 @@ app_ui = ui.page_fluid(
 # Server logic
 def server(input, output, session):
     # Reactive values for state management
-    current_session_id = reactive.Value(None)
     current_progression = reactive.Value(None)
     current_chord_symbols = reactive.Value(None)
     current_cadence_type = reactive.Value(None)
@@ -100,14 +103,23 @@ def server(input, output, session):
         if game_state() == "initial":
             await fetch_new_cadence()
 
-    # Fetch new cadence from backend
+    # Generate new cadence locally
     async def fetch_new_cadence():
         try:
-            data = await api_client.generate_cadence()
-            current_session_id.set(data["session_id"])
-            current_progression.set(data["progression"])
-            current_chord_symbols.set(data["chord_symbols"])
-            current_cadence_type.set(data["cadence_type"])
+            # Randomly select a cadence type
+            cadence_type = random.choice(list(CadenceType))
+
+            # Generate the progression locally
+            progression = generator.generate_progression(cadence_type)
+            midi_progression = generator.progression_to_midi(progression)
+            chord_symbols = generator.progression_to_symbols(progression)
+
+            # Store the generated data and correct answer
+            current_progression.set(midi_progression)
+            current_chord_symbols.set(chord_symbols)
+            current_cadence_type.set(cadence_type.value)  # "perfect", "plagal", etc.
+
+            # Reset game state
             has_played.set(False)
             is_playing.set(False)
             game_state.set("ready")
@@ -125,7 +137,7 @@ def server(input, output, session):
             await session.send_custom_message("clearNotation", {})
 
         except Exception as e:
-            feedback_msg.set(f"Error loading cadence: {str(e)}")
+            feedback_msg.set(f"Error generating cadence: {str(e)}")
             feedback_type.set("error")
 
     # Handle audio loading (first play only)
@@ -177,10 +189,12 @@ def server(input, output, session):
             feedback_type.set("error")
             return
 
-        if current_session_id() is None:
+        if current_cadence_type() is None:
+            feedback_msg.set("No cadence loaded yet!")
+            feedback_type.set("error")
             return
 
-        # Disable buttons during API call
+        # Disable buttons during validation
         await session.send_custom_message("updateButtonStates", {
             "playEnabled": False,
             "answersEnabled": False,
@@ -188,13 +202,14 @@ def server(input, output, session):
         })
 
         try:
-            result = await api_client.check_guess(
-                current_session_id(),
-                cadence_type
-            )
+            # Validate guess locally
+            correct_cadence = current_cadence_type()
+            guess_normalized = cadence_type.lower().strip()
+            is_correct = guess_normalized == correct_cadence
 
-            if result["correct"]:
-                feedback_msg.set(result["message"])
+            if is_correct:
+                # Correct answer
+                feedback_msg.set("Correct! Well done!")
                 feedback_type.set("success")
                 game_state.set("correct")
 
@@ -202,7 +217,7 @@ def server(input, output, session):
                 await session.send_custom_message("renderNotation", {
                     "progression": current_progression(),
                     "chordSymbols": current_chord_symbols(),
-                    "cadenceType": result["cadence_type"]
+                    "cadenceType": correct_cadence
                 })
 
                 # Show notation section and next button
@@ -213,7 +228,8 @@ def server(input, output, session):
                     "showNotation": True
                 })
             else:
-                feedback_msg.set(result["message"])
+                # Incorrect answer
+                feedback_msg.set("Not quite. Try again!")
                 feedback_type.set("error")
 
                 # Re-enable answer buttons for retry
@@ -224,7 +240,7 @@ def server(input, output, session):
                 })
 
         except Exception as e:
-            feedback_msg.set(f"Error checking answer: {str(e)}")
+            feedback_msg.set(f"Error validating answer: {str(e)}")
             feedback_type.set("error")
 
             # Re-enable buttons
