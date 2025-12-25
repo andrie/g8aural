@@ -13,12 +13,12 @@ class VoiceLeader:
     Uses greedy algorithm to minimize voice movement between consecutive chords.
     """
 
-    # SATB voice ranges (MIDI note numbers)
+    # Voice ranges optimized for treble clef notation (MIDI note numbers)
     VOICE_RANGES = {
-        'bass': (40, 60),      # E2 to C4
-        'tenor': (48, 67),     # C3 to G4
-        'alto': (55, 72),      # G3 to C5
-        'soprano': (60, 79),   # C4 to G5
+        'bass': (55, 67),      # G3 to G4 (bottom of treble clef)
+        'tenor': (60, 72),     # C4 (middle C) to C5
+        'alto': (64, 76),      # E4 to E5
+        'soprano': (67, 79),   # G4 to G5
     }
 
     # Preferred initial spacing (intervals above bass)
@@ -73,7 +73,7 @@ class VoiceLeader:
         Returns:
             List of MIDI note numbers
         """
-        chord_tones = chord.get_chord_tones(base_octave=3)  # Start from low octave
+        chord_tones = chord.get_chord_tones(base_octave=4)  # Start from middle octave for treble clef
         num_voices = len(chord_tones)
 
         # Get preferred spacing
@@ -152,7 +152,12 @@ class VoiceLeader:
             List of MIDI notes spanning multiple octaves
         """
         intervals = chord.get_intervals()
-        base_midi = 36  # Start from C2
+
+        # Use the chord's actual root note as the base
+        # Start from octave 3 for good treble clef range
+        base_octave = 3
+        root_pitch_class = chord.root_note.value
+        base_midi = (base_octave + 1) * 12 + root_pitch_class  # Convert to MIDI
 
         tones = []
         for octave in range(octave_range):
@@ -179,6 +184,12 @@ class VoiceLeader:
         intervals = chord.get_intervals()
         num_chord_tones = len(intervals)
 
+        # Get the actual root pitch class from the chord's root note
+        root_pc = chord.root_note.value  # This gives us the correct root pitch class
+
+        # Calculate required pitch classes based on the chord's actual root
+        required_pcs = set((root_pc + interval) % 12 for interval in intervals)
+
         # For voicings, we need to ensure we use one of each chord tone
         # Generate voicings by selecting one instance of each interval class
         if num_voices == 3 and num_chord_tones == 3:
@@ -187,10 +198,6 @@ class VoiceLeader:
                 voicing = sorted(list(combo))
                 # Check that we have all three different chord tones (modulo 12)
                 pitch_classes = set((note % 12) for note in voicing)
-                chord_pitch_classes = set((interval % 12) for interval in intervals)
-                # We need to check against the actual pitch classes of the chord
-                root_pc = chord_tones[0] % 12
-                required_pcs = set((root_pc + interval) % 12 for interval in intervals)
                 if pitch_classes == required_pcs and self._is_valid_voicing(voicing):
                     candidates.append(voicing)
 
@@ -200,8 +207,6 @@ class VoiceLeader:
                 voicing = sorted(list(combo))
                 # Check that we have all four different chord tones
                 pitch_classes = set((note % 12) for note in voicing)
-                root_pc = chord_tones[0] % 12
-                required_pcs = set((root_pc + interval) % 12 for interval in intervals)
                 if pitch_classes == required_pcs and self._is_valid_voicing(voicing):
                     candidates.append(voicing)
 
