@@ -14,6 +14,7 @@ Usage:
 
 import json
 from collections import defaultdict, Counter
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 import music21
@@ -28,60 +29,72 @@ class BachCorpusAnalyzer:
         self.transitions = defaultdict(lambda: defaultdict(int))
         self.cadence_approaches = defaultdict(Counter)
         self.total_transitions = defaultdict(int)
+        self.chorales_analyzed = 0
 
-    def analyze_all_bach_chorales(self) -> None:
-        """Parse all Bach chorales and extract progression patterns."""
+    def analyze_all_bach_chorales(self, limit: Optional[int] = None) -> None:
+        """
+        Parse all Bach chorales and extract progression patterns.
+
+        Args:
+            limit: Optional limit on number of chorales to process (for testing)
+        """
         print("Loading Bach chorales from music21 corpus...")
 
-        # Get all Bach chorales (BWV 1-438)
-        bach_works = corpus.search('bach', field='composer')
+        # Use direct chorales iterator (provides 371 chorales)
+        chorales = list(corpus.chorales.Iterator())
 
-        # Filter to just chorales (not other Bach works)
-        chorales = [work for work in bach_works
-                   if 'bwv' in str(work.sourcePath).lower()
-                   and 'chorale' in str(work).lower()]
-
-        if not chorales:
-            # Fallback: try direct path pattern
-            print("Trying alternative corpus loading method...")
-            chorales = []
-            for i in range(1, 439):
-                try:
-                    path = f'bach/bwv{i}.mxl'
-                    score = corpus.parse(path)
-                    chorales.append((path, score))
-                except:
-                    continue
-        else:
-            chorales = [(work.sourcePath, corpus.parse(work))
-                       for work in chorales[:100]]  # Limit to first 100 for reasonable processing time
+        # Optional limit for testing
+        if limit is not None:
+            chorales = chorales[:limit]
+            print(f"Limited to first {limit} chorales for testing")
 
         print(f"Found {len(chorales)} Bach chorales to analyze")
+        print()
 
         successful_analyses = 0
-        for idx, (path, score) in enumerate(chorales):
+        failed_chorales = []
+
+        for idx, score in enumerate(chorales):
             if idx % 10 == 0:
                 print(f"Processing chorale {idx+1}/{len(chorales)}...")
 
             try:
                 self._analyze_chorale(score)
                 successful_analyses += 1
+                self.chorales_analyzed = successful_analyses
             except Exception as e:
-                print(f"Warning: Could not analyze {path}: {e}")
+                failed_chorales.append((idx, str(e)))
+                print(f"Warning: Could not analyze chorale {idx+1}: {e}")
                 continue
 
-        print(f"\nSuccessfully analyzed {successful_analyses} chorales")
+        print()
+        print(f"Successfully analyzed {successful_analyses}/{len(chorales)} chorales")
+
+        if failed_chorales:
+            failure_rate = len(failed_chorales) / len(chorales) * 100
+            print(f"Failure rate: {failure_rate:.1f}%")
+
+            if failure_rate > 20:
+                print("WARNING: High failure rate. Check music21 installation.")
 
     def _analyze_chorale(self, score: stream.Score) -> None:
         """Analyze a single chorale for chord progressions."""
         # Get the key
-        chorale_key = score.analyze('key')
+        try:
+            chorale_key = score.analyze('key')
+        except Exception as e:
+            raise ValueError(f"Could not determine key: {e}")
 
         # Chordify to get vertical harmonies
-        chords = score.chordify()
+        try:
+            chords = score.chordify()
+        except Exception as e:
+            raise ValueError(f"Could not chordify score: {e}")
 
         # Extract Roman numeral analysis
         roman_numerals = []
+        skipped_chords = 0
+
         for chord_obj in chords.flatten().notes:
             if chord_obj.isChord:
                 try:
@@ -89,10 +102,17 @@ class BachCorpusAnalyzer:
                     rn = roman.romanNumeralFromChord(chord_obj, chorale_key)
                     # Simplify to just the scale degree (I, ii, iii, IV, V, vi, vii)
                     figure = self._normalize_roman_numeral(rn.figure)
+
                     if figure:
                         roman_numerals.append(figure)
-                except:
+                    else:
+                        skipped_chords += 1
+                except Exception:
+                    skipped_chords += 1
                     continue
+
+        if not roman_numerals:
+            raise ValueError(f"No valid chords extracted (skipped {skipped_chords})")
 
         # Track transitions
         for i in range(len(roman_numerals) - 1):
@@ -110,25 +130,37 @@ class BachCorpusAnalyzer:
         Normalize Roman numeral to basic scale degree.
 
         Converts things like 'V7', 'V65', 'vi' to just 'I', 'ii', 'iii', 'IV', 'V', 'vi', 'vii'
+        Handles inversions, sevenths, diminished chords, and secondary dominants.
         """
-        # Remove inversions, seventh figures, etc.
-        base = figure.split('/')[0]  # Remove slash chords
+        import re
 
-        # Map to basic Roman numerals
-        mapping = {
-            'I': 'I', 'i': 'i',
-            'II': 'II', 'ii': 'ii',
-            'III': 'III', 'iii': 'iii',
-            'IV': 'IV', 'iv': 'iv',
-            'V': 'V', 'v': 'v',
-            'VI': 'VI', 'vi': 'vi',
-            'VII': 'VII', 'vii': 'vii'
-        }
+        # Remove slash chords (secondary dominants like V/V)
+        base = figure.split('/')[0]
 
-        # Extract base numeral
-        for key in mapping.keys():
-            if base.startswith(key):
-                return mapping[key]
+        # Remove figured bass numbers (6, 65, 7, 42, etc.)
+        base = re.sub(r'[0-9]+', '', base)
+
+        # Remove quality indicators (° for diminished, + for augmented)
+        base = re.sub(r'[o+°]', '', base)
+
+        # Skip chromatic chords (bVI, #iv, augmented 6ths, Neapolitan)
+        if base in ['It', 'Fr', 'Ger', 'N'] or base.startswith('b') or base.startswith('#'):
+            return None
+
+        # CRITICAL: Check longer numerals first to avoid substring matching
+        valid_numerals = [
+            'VII', 'vii',  # Check VII before VI and V
+            'III', 'iii',  # Check III before II and I
+            'VI', 'vi',    # Check VI before V
+            'IV', 'iv',    # Check IV before I
+            'II', 'ii',    # Check II before I
+            'V', 'v',
+            'I', 'i'       # Check I last
+        ]
+
+        for numeral in valid_numerals:
+            if base.startswith(numeral):
+                return numeral
 
         return None
 
@@ -176,8 +208,10 @@ class BachCorpusAnalyzer:
             'transitions': probabilities,
             'cadence_approaches': cadence_approaches_dict,
             'metadata': {
-                'total_chorales_analyzed': len(self.total_transitions),
-                'total_transitions': sum(self.total_transitions.values())
+                'total_chorales_analyzed': self.chorales_analyzed,
+                'total_transitions': sum(self.total_transitions.values()),
+                'unique_chord_types': len(probabilities),
+                'analysis_date': datetime.now().isoformat()
             }
         }
 

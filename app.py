@@ -15,7 +15,7 @@ generator = ChordProgressionGenerator(
     use_sevenths=True,        # Enable 7th chords
     use_corpus=True,          # Use Bach corpus patterns
     corpus_temperature=0.8,   # Balance predictability/surprise
-    key='C'                   # Key for progressions
+    keys=['C', 'c']           # Both C major and C minor (randomly selected)
 )
 
 # UI Layout
@@ -34,7 +34,7 @@ app_ui = ui.page_fluid(
 
     # Header
     ui.div(
-        ui.h1("ABRSM Grade 8 Cadence Training"),
+        ui.h1("Grade 8 Aural Cadence Training"),
         ui.p("Practice identifying cadences by ear"),
         class_="header"
     ),
@@ -59,10 +59,10 @@ app_ui = ui.page_fluid(
     ui.div(
         ui.h3("Select the cadence type:"),
         ui.div(
-            ui.input_action_button("perfect_btn", "Perfect (V-I)", class_="cadence-btn"),
-            ui.input_action_button("plagal_btn", "Plagal (IV-I)", class_="cadence-btn"),
-            ui.input_action_button("imperfect_btn", "Imperfect (I-V)", class_="cadence-btn"),
-            ui.input_action_button("interrupted_btn", "Interrupted (V-vi)", class_="cadence-btn"),
+            ui.input_action_button("perfect_btn", "Perfect", class_="cadence-btn"),
+            ui.input_action_button("plagal_btn", "Plagal", class_="cadence-btn"),
+            ui.input_action_button("imperfect_btn", "Imperfect", class_="cadence-btn"),
+            ui.input_action_button("interrupted_btn", "Interrupted", class_="cadence-btn"),
             class_="answer-grid"
         ),
         class_="answer-section"
@@ -97,6 +97,7 @@ app_ui = ui.page_fluid(
 def server(input, output, session):
     # Reactive values for state management
     current_progression = reactive.Value(None)
+    current_note_names = reactive.Value(None)
     current_chord_symbols = reactive.Value(None)
     current_cadence_type = reactive.Value(None)
     has_played = reactive.Value(False)
@@ -120,10 +121,12 @@ def server(input, output, session):
             # Generate the progression locally
             progression = generator.generate_progression(cadence_type)
             midi_progression = generator.progression_to_midi(progression)
+            note_names = generator.progression_to_note_names(progression)
             chord_symbols = generator.progression_to_symbols(progression)
 
             # Store the generated data and correct answer
             current_progression.set(midi_progression)
+            current_note_names.set(note_names)
             current_chord_symbols.set(chord_symbols)
             current_cadence_type.set(cadence_type.value)  # "perfect", "plagal", etc.
 
@@ -169,7 +172,8 @@ def server(input, output, session):
 
         # Send progression to JavaScript for playback
         await session.send_custom_message("playProgression", {
-            "progression": current_progression()
+            "progression": current_progression(),
+            "noteNames": current_note_names()
         })
 
         # Note: JavaScript will send message back when playback completes
@@ -224,6 +228,7 @@ def server(input, output, session):
                 # Show notation
                 await session.send_custom_message("renderNotation", {
                     "progression": current_progression(),
+                    "noteNames": current_note_names(),
                     "chordSymbols": current_chord_symbols(),
                     "cadenceType": correct_cadence
                 })
@@ -288,13 +293,14 @@ def server(input, output, session):
             return
 
         # Show the hint message
-        feedback_msg.set(f"Hint: Here's the sheet music. The answer is {current_cadence_type().title()}.")
+        feedback_msg.set(f"Hint: Here's the sheet music.")
         feedback_type.set("info")
         game_state.set("hint_shown")
 
         # Show notation with the correct answer
         await session.send_custom_message("renderNotation", {
             "progression": current_progression(),
+            "noteNames": current_note_names(),
             "chordSymbols": current_chord_symbols(),
             "cadenceType": current_cadence_type()
         })

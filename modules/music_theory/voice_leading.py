@@ -97,6 +97,65 @@ class VoiceLeader:
 
         return voiced_progression
 
+    def voice_progression_with_names(self, progression: List[roman.RomanNumeral]) -> List[List[str]]:
+        """
+        Voice a progression and return note names with correct enharmonic spelling.
+
+        This method voices the progression using the voice leading algorithm, then
+        extracts the correctly-spelled note names from the original RomanNumeral objects.
+
+        Args:
+            progression: List of music21 RomanNumeral objects
+
+        Returns:
+            List of lists containing note names (e.g., ["C4", "Eb4", "G4", "C5"])
+
+        Examples:
+            >>> from music21 import roman
+            >>> vl = VoiceLeader()
+            >>> chords = [roman.RomanNumeral('i', 'c'), roman.RomanNumeral('V7', 'c')]
+            >>> names = vl.voice_progression_with_names(chords)
+            >>> names[0]
+            ['C4', 'Eb4', 'G4', 'C5']  # Correct spelling preserved
+        """
+        from music21 import pitch
+
+        # Get MIDI voicings
+        midi_voicings = self.voice_progression(progression)
+
+        # For each chord, map MIDI numbers to correctly-spelled names
+        result = []
+        for chord, midi_voicing in zip(progression, midi_voicings):
+            # Get all available pitches from the original chord
+            available_pitches = {}
+            for p in chord.pitches:
+                # Store by pitch class (MIDI % 12) for lookup
+                pitch_class = p.midi % 12
+                if pitch_class not in available_pitches:
+                    available_pitches[pitch_class] = p.name  # e.g., "E-", "C"
+
+            # Build note names for this voicing
+            note_names = []
+            for midi_num in midi_voicing:
+                pitch_class = midi_num % 12
+                octave = midi_num // 12 - 1
+
+                # Get correct spelling from the chord
+                if pitch_class in available_pitches:
+                    note_name = available_pitches[pitch_class]
+                else:
+                    # Fallback: create pitch object and use its spelling
+                    # This happens for added notes (like 7ths)
+                    temp_pitch = pitch.Pitch(midi=midi_num)
+                    note_name = temp_pitch.name
+
+                # Combine name and octave
+                note_names.append(f"{note_name}{octave}")
+
+            result.append(note_names)
+
+        return result
+
     def _generate_candidates(self, chord: roman.RomanNumeral) -> List[List[int]]:
         """
         Generate valid voicings within voice ranges.

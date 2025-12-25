@@ -30,7 +30,7 @@ function midiToVexFlowNote(midiNumber) {
 }
 
 // Render the chord progression as notation
-function renderNotation(progression, chordSymbols, cadenceType) {
+function renderNotation(progression, noteNames, chordSymbols, cadenceType) {
     try {
         // Initialize renderer
         initNotation();
@@ -45,8 +45,11 @@ function renderNotation(progression, chordSymbols, cadenceType) {
         const chordCount = progression.length;
 
         progression.forEach((chord, index) => {
-            // Convert MIDI to VexFlow notation
-            const noteStrings = chord.map(midi => midiToVexFlowNote(midi));
+            // Use provided note names (with correct enharmonic spelling)
+            // Convert from ["C4", "E-4", "G4"] to ["C/4", "Eb/4", "G/4"]
+            // music21 uses "-" for flats, VexFlow expects "b"
+            const noteStrings = noteNames[index].map(name =>
+                name.replace(/-/g, 'b').replace(/(\d)$/, '/$1'));
 
             // Create chord (stacked notes)
             const staveNote = new VF.StaveNote({
@@ -142,7 +145,7 @@ function updateButtonStates(states) {
 // Listen for custom messages from Shiny
 if (window.Shiny) {
     Shiny.addCustomMessageHandler("renderNotation", function(message) {
-        renderNotation(message.progression, message.chordSymbols, message.cadenceType);
+        renderNotation(message.progression, message.noteNames, message.chordSymbols, message.cadenceType);
     });
 
     Shiny.addCustomMessageHandler("clearNotation", function(message) {
