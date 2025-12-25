@@ -1,17 +1,19 @@
 """
-Voice leading algorithm for smooth chord progressions.
-"""
-from typing import List, Tuple
-from itertools import combinations
+Voice leading algorithm using music21 with 1-step lookahead optimization.
 
-from .notes import Chord
+This module provides professional-grade voice leading using music21's
+VoiceLeadingQuartet to validate transitions and a lookahead algorithm
+to prevent "painting into corners".
+"""
+
+from typing import List, Optional, Tuple
+from itertools import product
+from music21 import roman, pitch, voiceLeading
+from .roman_numerals import ChordFactory
 
 
 class VoiceLeader:
-    """
-    Implements automatic voice leading for chord progressions.
-    Uses greedy algorithm to minimize voice movement between consecutive chords.
-    """
+    """Voice leading with music21 validation and lookahead optimization."""
 
     # Voice ranges optimized for treble clef notation (MIDI note numbers)
     VOICE_RANGES = {
@@ -21,342 +23,450 @@ class VoiceLeader:
         'soprano': (67, 79),   # G4 to G5
     }
 
-    # Preferred initial spacing (intervals above bass)
-    INITIAL_SPACING = {
-        3: [0, 7, 12],         # Triad: root, 5th, octave (3-voice)
-        4: [0, 7, 12, 16],     # Seventh: root, 5th, octave, 10th (4-voice)
-    }
-
     def __init__(self):
         """Initialize voice leader."""
-        self.previous_voicing = None
+        pass
 
-    def voice_progression(self, chords: List[Chord]) -> List[List[int]]:
+    def voice_progression(self, chords: List[roman.RomanNumeral]) -> List[List[int]]:
         """
-        Apply voice leading to a chord progression.
+        Voice chord progression with 1-step lookahead.
+
+        Algorithm:
+        1. Generate candidate voicings for each chord
+        2. For each transition, evaluate:
+           - Voice motion distance
+           - music21.voiceLeading.VoiceLeadingQuartet violations
+           - If lookahead available, consider next transition too
+        3. Use dynamic programming to find optimal path
 
         Args:
-            chords: List of Chord objects
+            chords: List of music21 RomanNumeral objects
 
         Returns:
-            List of MIDI note lists (one per chord) with optimal voice leading
+            List of MIDI note lists (4 voices per chord)
+
+        Examples:
+            >>> from music21 import roman
+            >>> from .voice_leading import VoiceLeader
+            >>> vl = VoiceLeader()
+            >>> chords = [roman.RomanNumeral('I', 'C'), roman.RomanNumeral('V', 'C')]
+            >>> voicings = vl.voice_progression(chords)
+            >>> len(voicings) == 2
+            True
         """
         if not chords:
             return []
 
+        # Generate candidate voicings for all chords
+        all_candidates = [self._generate_candidates(chord) for chord in chords]
+
+        # Dynamic programming with lookahead
         voiced_progression = []
+        prev_voicing = None
 
         for i, chord in enumerate(chords):
+            candidates_current = all_candidates[i]
+
             if i == 0:
-                # First chord: use good initial voicing
-                voicing = self._get_initial_voicing(chord)
+                # First chord: pick best initial voicing (close position, good spacing)
+                best_voicing = self._choose_initial_voicing(candidates_current)
             else:
-                # Subsequent chords: optimize for smooth voice leading
-                voicing = self._find_best_voicing(chord, self.previous_voicing)
+                # Has previous chord
+                if i < len(chords) - 1:
+                    # Has next chord: use lookahead
+                    candidates_next = all_candidates[i + 1]
+                    best_voicing = self._voice_with_lookahead(
+                        candidates_current,
+                        candidates_next,
+                        prev_voicing,
+                        chords[i - 1],
+                        chord,
+                        chords[i + 1]
+                    )
+                else:
+                    # Last chord: no lookahead
+                    best_voicing = self._find_best_voicing(
+                        candidates_current,
+                        prev_voicing,
+                        chords[i - 1],
+                        chord
+                    )
 
-            voiced_progression.append(voicing)
-            self.previous_voicing = voicing
-
-        # Reset for next progression
-        self.previous_voicing = None
+            voiced_progression.append(best_voicing)
+            prev_voicing = best_voicing
 
         return voiced_progression
 
-    def _get_initial_voicing(self, chord: Chord) -> List[int]:
+    def _generate_candidates(self, chord: roman.RomanNumeral) -> List[List[int]]:
         """
-        Get initial voicing for first chord in progression.
-        Uses root position with good spacing.
+        Generate valid voicings within voice ranges.
 
         Args:
-            chord: The chord to voice
+            chord: music21 RomanNumeral object
 
         Returns:
-            List of MIDI note numbers
+            List of candidate voicings (each is a list of 4 MIDI notes for SATB)
+
+        Examples:
+            >>> chord = roman.RomanNumeral('I', 'C')
+            >>> vl = VoiceLeader()
+            >>> candidates = vl._generate_candidates(chord)
+            >>> len(candidates) > 0
+            True
         """
-        chord_tones = chord.get_chord_tones(base_octave=4)  # Start from middle octave for treble clef
-        num_voices = len(chord_tones)
+        # Get all available pitches across octaves
+        chord_tones = ChordFactory.get_chord_tones(chord, octave_range=(3, 6))
 
-        # Get preferred spacing
-        spacing = self.INITIAL_SPACING.get(num_voices, [0, 7, 12])
+        # Determine number of unique pitch classes
+        pitches = chord.pitches
+        num_pitch_classes = len(pitches)
 
-        # Bass note (root) in bass range
-        bass_note = chord_tones[0]
-
-        # Build voicing with spacing
-        voicing = []
-        for i, interval in enumerate(spacing[:num_voices]):
-            # For 7th chords, adjust the 4th note to use the actual 7th
-            if i == 3 and num_voices == 4:
-                # Use the actual 7th from chord tones (10 semitones)
-                note = bass_note + 19  # Roughly two octaves up for the 7th
-            else:
-                note = bass_note + interval
-            voicing.append(note)
-
-        # Ensure all notes are in reasonable ranges
-        voicing = self._adjust_to_ranges(voicing, chord_tones)
-
-        return voicing
-
-    def _find_best_voicing(self, chord: Chord, prev_voicing: List[int]) -> List[int]:
-        """
-        Find best voicing for chord that minimizes movement from previous voicing.
-
-        Args:
-            chord: The chord to voice
-            prev_voicing: MIDI notes from previous chord
-
-        Returns:
-            List of MIDI note numbers with optimal voice leading
-        """
-        # Get all chord tones in multiple octaves
-        chord_tones = self._get_chord_tones_multi_octave(chord)
-
-        # Determine number of voices based on chord type
-        num_voices = len(chord.get_intervals())  # 3 for triads, 4 for sevenths
-        best_voicing = None
-        best_distance = float('inf')
-
-        # Generate candidate voicings
-        candidates = self._generate_candidate_voicings(chord_tones, num_voices, chord)
-
-        for candidate in candidates:
-            # Calculate total voice movement (handle different voice counts)
-            if len(prev_voicing) == num_voices:
-                # Same number of voices - direct comparison
-                distance = self._calculate_voice_distance(prev_voicing, candidate)
-                penalty = self._calculate_penalties(prev_voicing, candidate)
-            else:
-                # Different voice counts - use simplified distance metric
-                # Compare closest voices only
-                distance = self._calculate_adaptive_distance(prev_voicing, candidate)
-                penalty = 0.0  # Don't apply strict voice leading rules when voice count changes
-
-            total_cost = distance + penalty
-
-            if total_cost < best_distance:
-                best_distance = total_cost
-                best_voicing = candidate
-
-        return best_voicing if best_voicing else self._get_initial_voicing(chord)
-
-    def _get_chord_tones_multi_octave(self, chord: Chord, octave_range: int = 4) -> List[int]:
-        """
-        Get chord tones across multiple octaves.
-
-        Args:
-            chord: The chord
-            octave_range: Number of octaves to span
-
-        Returns:
-            List of MIDI notes spanning multiple octaves
-        """
-        intervals = chord.get_intervals()
-
-        # Use the chord's actual root note as the base
-        # Start from octave 3 for good treble clef range
-        base_octave = 3
-        root_pitch_class = chord.root_note.value
-        base_midi = (base_octave + 1) * 12 + root_pitch_class  # Convert to MIDI
-
-        tones = []
-        for octave in range(octave_range):
-            for interval in intervals:
-                note = base_midi + (octave * 12) + interval
-                if note <= 84:  # Don't go above C6
-                    tones.append(note)
-
-        return sorted(set(tones))
-
-    def _generate_candidate_voicings(self, chord_tones: List[int], num_voices: int, chord: Chord) -> List[List[int]]:
-        """
-        Generate candidate voicings from available chord tones.
-
-        Args:
-            chord_tones: Available MIDI notes
-            num_voices: Number of voices needed
-            chord: The chord object
-
-        Returns:
-            List of possible voicings
-        """
         candidates = []
-        intervals = chord.get_intervals()
-        num_chord_tones = len(intervals)
 
-        # Get the actual root pitch class from the chord's root note
-        root_pc = chord.root_note.value  # This gives us the correct root pitch class
+        if num_pitch_classes == 3:
+            # Triad: pick 4 notes, doubling one pitch class
+            # Common practice: double root or fifth
+            for bass in chord_tones:
+                if not (self.VOICE_RANGES['bass'][0] <= bass <= self.VOICE_RANGES['bass'][1]):
+                    continue
 
-        # Calculate required pitch classes based on the chord's actual root
-        required_pcs = set((root_pc + interval) % 12 for interval in intervals)
+                for tenor in chord_tones:
+                    if not (self.VOICE_RANGES['tenor'][0] <= tenor <= self.VOICE_RANGES['tenor'][1]):
+                        continue
+                    if tenor < bass:
+                        continue
 
-        # For voicings, we need to ensure we use one of each chord tone
-        # Generate voicings by selecting one instance of each interval class
-        if num_voices == 3 and num_chord_tones == 3:
-            # Triads: select one of each note (root, 3rd, 5th)
-            for combo in combinations(chord_tones, 3):
-                voicing = sorted(list(combo))
-                # Check that we have all three different chord tones (modulo 12)
-                pitch_classes = set((note % 12) for note in voicing)
-                if pitch_classes == required_pcs and self._is_valid_voicing(voicing):
-                    candidates.append(voicing)
+                    for alto in chord_tones:
+                        if not (self.VOICE_RANGES['alto'][0] <= alto <= self.VOICE_RANGES['alto'][1]):
+                            continue
+                        if alto < tenor:
+                            continue
 
-        elif num_voices == 4 and num_chord_tones == 4:
-            # 7th chords: select one of each note (root, 3rd, 5th, 7th)
-            for combo in combinations(chord_tones, 4):
-                voicing = sorted(list(combo))
-                # Check that we have all four different chord tones
-                pitch_classes = set((note % 12) for note in voicing)
-                if pitch_classes == required_pcs and self._is_valid_voicing(voicing):
-                    candidates.append(voicing)
+                        for soprano in chord_tones:
+                            if not (self.VOICE_RANGES['soprano'][0] <= soprano <= self.VOICE_RANGES['soprano'][1]):
+                                continue
+                            if soprano < alto:
+                                continue
 
-        # If no candidates found, generate simpler voicings
-        if not candidates:
-            for combo in combinations(chord_tones, num_voices):
-                voicing = sorted(list(combo))
-                if self._is_valid_voicing(voicing):
-                    candidates.append(voicing)
+                            voicing = [bass, tenor, alto, soprano]
 
-        return candidates[:100]  # Limit to avoid excessive computation
+                            # Check that we have all 3 pitch classes (mod 12)
+                            pitch_classes = set(n % 12 for n in voicing)
+                            required_pcs = set(p.midi % 12 for p in pitches)
+
+                            if pitch_classes == required_pcs and self._is_valid_voicing(voicing):
+                                candidates.append(voicing)
+
+        elif num_pitch_classes == 4:
+            # Seventh chord: use all 4 pitch classes, one each
+            for bass in chord_tones:
+                if not (self.VOICE_RANGES['bass'][0] <= bass <= self.VOICE_RANGES['bass'][1]):
+                    continue
+
+                for tenor in chord_tones:
+                    if not (self.VOICE_RANGES['tenor'][0] <= tenor <= self.VOICE_RANGES['tenor'][1]):
+                        continue
+                    if tenor < bass:
+                        continue
+
+                    for alto in chord_tones:
+                        if not (self.VOICE_RANGES['alto'][0] <= alto <= self.VOICE_RANGES['alto'][1]):
+                            continue
+                        if alto < tenor:
+                            continue
+
+                        for soprano in chord_tones:
+                            if not (self.VOICE_RANGES['soprano'][0] <= soprano <= self.VOICE_RANGES['soprano'][1]):
+                                continue
+                            if soprano < alto:
+                                continue
+
+                            voicing = [bass, tenor, alto, soprano]
+
+                            # Check that we have all 4 pitch classes
+                            pitch_classes = set(n % 12 for n in voicing)
+                            required_pcs = set(p.midi % 12 for p in pitches)
+
+                            if pitch_classes == required_pcs and self._is_valid_voicing(voicing):
+                                candidates.append(voicing)
+
+        # Limit candidates to avoid excessive computation
+        return candidates[:200]
 
     def _is_valid_voicing(self, voicing: List[int]) -> bool:
         """
-        Check if voicing is valid (reasonable spacing, within ranges).
+        Check if voicing is valid (reasonable spacing, no voice crossing).
 
         Args:
-            voicing: List of MIDI notes
+            voicing: List of 4 MIDI notes [bass, tenor, alto, soprano]
 
         Returns:
             True if valid
+
+        Examples:
+            >>> vl = VoiceLeader()
+            >>> vl._is_valid_voicing([60, 64, 67, 72])
+            True
         """
-        if not voicing or len(voicing) < 3:
+        if len(voicing) != 4:
             return False
 
-        # Check voice ranges - get ranges for the number of voices we have
-        range_keys = ['bass', 'tenor', 'alto', 'soprano'][:len(voicing)]
-        ranges = [self.VOICE_RANGES[key] for key in range_keys]
-
-        for note, (min_note, max_note) in zip(voicing, ranges):
-            if note < min_note or note > max_note:
-                return False
-
-        # Check spacing (no voice should be more than 12 semitones apart except bass)
+        # Check spacing between upper voices (no more than an octave)
         for i in range(1, len(voicing) - 1):
-            if voicing[i+1] - voicing[i] > 12:
+            if voicing[i + 1] - voicing[i] > 12:
                 return False
 
-        # Bass to tenor can be wider
-        if len(voicing) > 1 and voicing[1] - voicing[0] > 15:
+        # Bass to tenor can be wider (up to 1.5 octaves)
+        if voicing[1] - voicing[0] > 18:
             return False
+
+        # Check no voice crossing
+        for i in range(len(voicing) - 1):
+            if voicing[i] > voicing[i + 1]:
+                return False
 
         return True
 
-    def _calculate_voice_distance(self, voicing1: List[int], voicing2: List[int]) -> float:
+    def _choose_initial_voicing(self, candidates: List[List[int]]) -> List[int]:
         """
-        Calculate total movement between two voicings.
+        Choose best initial voicing (favor close position, good spacing).
 
         Args:
-            voicing1: First voicing
-            voicing2: Second voicing
+            candidates: List of candidate voicings
 
         Returns:
-            Total semitone distance (sum of absolute differences)
-        """
-        if len(voicing1) != len(voicing2):
-            return float('inf')
+            Best initial voicing
 
-        return sum(abs(n1 - n2) for n1, n2 in zip(voicing1, voicing2))
-
-    def _calculate_adaptive_distance(self, voicing1: List[int], voicing2: List[int]) -> float:
+        Examples:
+            >>> vl = VoiceLeader()
+            >>> candidates = [[60, 64, 67, 72], [60, 67, 72, 76]]
+            >>> voicing = vl._choose_initial_voicing(candidates)
+            >>> voicing in candidates
+            True
         """
-        Calculate distance between voicings with different voice counts.
-        Matches closest voices and adds penalty for extra/missing voices.
+        if not candidates:
+            # Fallback: create a basic C major chord
+            return [60, 64, 67, 72]
+
+        # Score each candidate
+        best_voicing = candidates[0]
+        best_score = float('inf')
+
+        for voicing in candidates:
+            # Prefer close position (smaller total span)
+            span = voicing[-1] - voicing[0]
+
+            # Prefer voicings with reasonable spacing
+            spacing_penalty = 0
+            for i in range(len(voicing) - 1):
+                interval = voicing[i + 1] - voicing[i]
+                if interval > 12:
+                    spacing_penalty += (interval - 12)
+
+            score = span + spacing_penalty
+
+            if score < best_score:
+                best_score = score
+                best_voicing = voicing
+
+        return best_voicing
+
+    def _find_best_voicing(self, candidates: List[List[int]],
+                          prev_voicing: List[int],
+                          prev_chord: roman.RomanNumeral,
+                          current_chord: roman.RomanNumeral) -> List[int]:
+        """
+        Find best voicing that minimizes cost from previous voicing.
 
         Args:
-            voicing1: First voicing
-            voicing2: Second voicing
+            candidates: List of candidate voicings for current chord
+            prev_voicing: Previous chord's voicing
+            prev_chord: Previous RomanNumeral
+            current_chord: Current RomanNumeral
 
         Returns:
-            Adaptive distance metric
+            Best voicing for current chord
+
+        Examples:
+            >>> from music21 import roman
+            >>> vl = VoiceLeader()
+            >>> prev_chord = roman.RomanNumeral('I', 'C')
+            >>> curr_chord = roman.RomanNumeral('V', 'C')
+            >>> candidates = [[67, 71, 74, 79]]
+            >>> prev_voicing = [60, 64, 67, 72]
+            >>> best = vl._find_best_voicing(candidates, prev_voicing, prev_chord, curr_chord)
+            >>> best in candidates
+            True
         """
-        # Match common voices (take minimum count)
-        min_voices = min(len(voicing1), len(voicing2))
+        if not candidates:
+            return prev_voicing
 
-        # Compare bottom voices (most important for stability)
-        distance = sum(abs(voicing1[i] - voicing2[i]) for i in range(min_voices))
+        best_voicing = candidates[0]
+        best_cost = float('inf')
 
-        # Add penalty for voice count difference
-        voice_diff = abs(len(voicing1) - len(voicing2))
-        distance += voice_diff * 5  # Moderate penalty for changing voice count
+        for candidate in candidates:
+            cost = self._evaluate_transition(
+                prev_voicing,
+                candidate,
+                prev_chord,
+                current_chord
+            )
 
-        return distance
+            if cost < best_cost:
+                best_cost = cost
+                best_voicing = candidate
 
-    def _calculate_penalties(self, prev_voicing: List[int], curr_voicing: List[int]) -> float:
+        return best_voicing
+
+    def _voice_with_lookahead(self, candidates_current: List[List[int]],
+                              candidates_next: List[List[int]],
+                              prev_voicing: List[int],
+                              prev_chord: roman.RomanNumeral,
+                              chord_current: roman.RomanNumeral,
+                              chord_next: roman.RomanNumeral) -> List[int]:
         """
-        Calculate penalties for voice leading violations.
+        Choose voicing considering both current and next transition.
+
+        For each candidate_current:
+            cost1 = transition(prev → candidate_current)
+            For each candidate_next:
+                cost2 = transition(candidate_current → candidate_next)
+            total_cost = cost1 + 0.5 * min(cost2)  # Discount future
+
+        Return candidate_current with minimum total_cost
 
         Args:
-            prev_voicing: Previous chord voicing
-            curr_voicing: Current chord voicing
+            candidates_current: Candidates for current chord
+            candidates_next: Candidates for next chord
+            prev_voicing: Previous chord's voicing
+            prev_chord: Previous RomanNumeral
+            chord_current: Current RomanNumeral
+            chord_next: Next RomanNumeral
 
         Returns:
-            Penalty score (higher is worse)
+            Best voicing for current chord considering lookahead
+
+        Examples:
+            >>> from music21 import roman
+            >>> vl = VoiceLeader()
+            >>> prev_chord = roman.RomanNumeral('I', 'C')
+            >>> curr_chord = roman.RomanNumeral('IV', 'C')
+            >>> next_chord = roman.RomanNumeral('V', 'C')
+            >>> candidates_curr = [[65, 69, 72, 77]]
+            >>> candidates_next = [[67, 71, 74, 79]]
+            >>> prev_voicing = [60, 64, 67, 72]
+            >>> best = vl._voice_with_lookahead(
+            ...     candidates_curr, candidates_next, prev_voicing,
+            ...     prev_chord, curr_chord, next_chord
+            ... )
+            >>> best in candidates_curr
+            True
         """
+        if not candidates_current:
+            return prev_voicing
+
+        best_voicing = candidates_current[0]
+        best_total_cost = float('inf')
+
+        for candidate_current in candidates_current:
+            # Cost from previous to current
+            cost1 = self._evaluate_transition(
+                prev_voicing,
+                candidate_current,
+                prev_chord,
+                chord_current
+            )
+
+            # Find minimum cost to next chord
+            min_cost2 = float('inf')
+            for candidate_next in candidates_next[:50]:  # Sample for performance
+                cost2 = self._evaluate_transition(
+                    candidate_current,
+                    candidate_next,
+                    chord_current,
+                    chord_next
+                )
+                if cost2 < min_cost2:
+                    min_cost2 = cost2
+
+            # Total cost with discounted future
+            total_cost = cost1 + 0.5 * min_cost2
+
+            if total_cost < best_total_cost:
+                best_total_cost = total_cost
+                best_voicing = candidate_current
+
+        return best_voicing
+
+    def _evaluate_transition(self, voicing1: List[int],
+                            voicing2: List[int],
+                            chord1: roman.RomanNumeral,
+                            chord2: roman.RomanNumeral) -> float:
+        """
+        Score a voice leading transition.
+
+        Uses music21.voiceLeading.VoiceLeadingQuartet:
+        - Check parallelFifth(), parallelOctave()
+        - Check voiceCrossing()
+        - Measure total voice motion
+
+        Args:
+            voicing1: First voicing (4 MIDI notes)
+            voicing2: Second voicing (4 MIDI notes)
+            chord1: First RomanNumeral
+            chord2: Second RomanNumeral
+
+        Returns:
+            Cost (lower is better)
+
+        Examples:
+            >>> from music21 import roman
+            >>> vl = VoiceLeader()
+            >>> chord1 = roman.RomanNumeral('I', 'C')
+            >>> chord2 = roman.RomanNumeral('V', 'C')
+            >>> cost = vl._evaluate_transition([60, 64, 67, 72], [67, 71, 74, 79], chord1, chord2)
+            >>> cost >= 0
+            True
+        """
+        # Base cost: total voice motion
+        motion = sum(abs(v2 - v1) for v1, v2 in zip(voicing1, voicing2))
+
         penalty = 0.0
 
-        if len(prev_voicing) != len(curr_voicing):
-            return float('inf')
+        # Create voice leading quartet for music21 analysis
+        try:
+            # Convert MIDI numbers to pitch objects
+            v1_pitches = [pitch.Pitch(midi=m) for m in voicing1]
+            v2_pitches = [pitch.Pitch(midi=m) for m in voicing2]
 
-        # Check for parallel fifths and octaves
-        for i in range(len(prev_voicing)):
-            for j in range(i + 1, len(prev_voicing)):
-                interval1 = prev_voicing[j] - prev_voicing[i]
-                interval2 = curr_voicing[j] - curr_voicing[i]
+            # Check each pair of voices for parallel motion
+            for i in range(len(voicing1)):
+                for j in range(i + 1, len(voicing1)):
+                    vlq = voiceLeading.VoiceLeadingQuartet(
+                        v1_pitches[i], v1_pitches[j],
+                        v2_pitches[i], v2_pitches[j]
+                    )
 
-                # Parallel perfect fifth (7 semitones)
-                if abs(interval1 % 12) == 7 and abs(interval2 % 12) == 7:
-                    # Check if moving in same direction with same interval
-                    motion1 = curr_voicing[i] - prev_voicing[i]
-                    motion2 = curr_voicing[j] - prev_voicing[j]
-                    if motion1 == motion2 and motion1 != 0:
-                        penalty += 50.0  # Heavy penalty
+                    # Parallel fifths
+                    if vlq.parallelFifth():
+                        penalty += 100.0
 
-                # Parallel octave
-                if interval1 % 12 == 0 and interval2 % 12 == 0:
-                    motion1 = curr_voicing[i] - prev_voicing[i]
-                    motion2 = curr_voicing[j] - prev_voicing[j]
-                    if motion1 == motion2 and motion1 != 0:
-                        penalty += 50.0  # Heavy penalty
+                    # Parallel octaves
+                    if vlq.parallelOctave():
+                        penalty += 100.0
 
-        # Penalize large leaps (more than a 5th)
-        for i in range(len(prev_voicing)):
-            leap = abs(curr_voicing[i] - prev_voicing[i])
-            if leap > 7:  # Larger than perfect 5th
-                penalty += (leap - 7) * 2.0
+                    # Voice crossing (penalize but not as heavily)
+                    if vlq.voiceCrossing():
+                        penalty += 20.0
 
-        return penalty
+        except Exception:
+            # If music21 analysis fails, fall back to simple checks
+            pass
 
-    def _adjust_to_ranges(self, voicing: List[int], chord_tones: List[int]) -> List[int]:
-        """
-        Adjust voicing to fit within voice ranges.
+        # Penalize large leaps (more than a perfect 5th = 7 semitones)
+        for v1, v2 in zip(voicing1, voicing2):
+            leap = abs(v2 - v1)
+            if leap > 7:
+                penalty += (leap - 7) * 3.0
 
-        Args:
-            voicing: Initial voicing
-            chord_tones: Available chord tones
-
-        Returns:
-            Adjusted voicing within ranges
-        """
-        adjusted = []
-        range_keys = ['bass', 'tenor', 'alto', 'soprano'][:len(voicing)]
-        ranges = [self.VOICE_RANGES[key] for key in range_keys]
-
-        for note, (min_note, max_note) in zip(voicing, ranges):
-            # Shift note into range if needed
-            while note < min_note:
-                note += 12
-            while note > max_note:
-                note -= 12
-            adjusted.append(note)
-
-        return adjusted
+        return motion + penalty

@@ -12,7 +12,10 @@ generator = ChordProgressionGenerator(
     min_length=4,
     max_length=8,
     use_voice_leading=True,  # Enable automatic voice leading
-    use_sevenths=True         # Enable 7th chords
+    use_sevenths=True,        # Enable 7th chords
+    use_corpus=True,          # Use Bach corpus patterns
+    corpus_temperature=0.8,   # Balance predictability/surprise
+    key='C'                   # Key for progressions
 )
 
 # UI Layout

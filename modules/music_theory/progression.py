@@ -1,39 +1,41 @@
 """
-Chord progression generator with rule-based composition.
+Chord progression generator using music21 and Bach corpus patterns.
+
+This module generates chord progressions using music21's RomanNumeral analysis
+combined with Markov chain models based on Bach chorale patterns.
 """
 import random
-from typing import List
+from typing import List, Optional
+from music21 import roman
 
-from .notes import Chord
 from .cadences import CadenceType, CadencePattern
 from .voice_leading import VoiceLeader
+from .roman_numerals import ChordFactory
+from .markov_model import MarkovChordSelector
 
 
 class ChordProgressionGenerator:
-    """Generates musical chord progressions following music theory rules."""
+    """Generates chord progressions using music21 and Bach corpus patterns."""
 
-    # Common chord progressions (scale degrees) that sound good
-    STRONG_PROGRESSIONS = [
-        (1, 4),   # I → IV
-        (1, 5),   # I → V
-        (1, 6),   # I → vi
-        (2, 5),   # ii → V
-        (4, 5),   # IV → V
-        (4, 1),   # IV → I
-        (5, 1),   # V → I
-        (5, 6),   # V → vi
-        (6, 4),   # vi → IV
-        (6, 2),   # vi → ii
-    ]
+    # Fallback strong progressions (used when corpus is unavailable)
+    STRONG_PROGRESSIONS = {
+        1: [4, 5, 6],
+        2: [5],
+        3: [4, 6],
+        4: [5, 1],
+        5: [1, 6],
+        6: [4, 2],
+        7: [1]
+    }
 
-    # Progressions to avoid (weak voice leading)
-    WEAK_PROGRESSIONS = [
-        (5, 4),   # V → IV (retrogression)
-        (1, 2),   # I → ii (weak)
-        (3, 1),   # iii → I (uncommon)
-    ]
-
-    def __init__(self, min_length: int = 4, max_length: int = 8, use_voice_leading: bool = True, use_sevenths: bool = True):
+    def __init__(self,
+                 min_length: int = 4,
+                 max_length: int = 8,
+                 use_voice_leading: bool = True,
+                 use_sevenths: bool = True,
+                 use_corpus: bool = True,
+                 corpus_temperature: float = 0.8,
+                 key: str = 'C'):
         """
         Initialize the generator.
 
@@ -42,22 +44,37 @@ class ChordProgressionGenerator:
             max_length: Maximum number of chords in progression
             use_voice_leading: Apply automatic voice leading (default True)
             use_sevenths: Use 7th chords where appropriate (default True)
+            use_corpus: Use Bach corpus patterns (default True)
+            corpus_temperature: Randomness for Markov model (0.0=deterministic, 2.0=very random)
+            key: Key for progressions (e.g., 'C', 'G', 'd' for D minor)
         """
         self.min_length = min_length
         self.max_length = max_length
         self.use_voice_leading = use_voice_leading
         self.use_sevenths = use_sevenths
-        self.voice_leader = VoiceLeader() if use_voice_leading else None
+        self.use_corpus = use_corpus
+        self.key = key
+        self.corpus_temperature = corpus_temperature
 
-    def generate_progression(self, cadence_type: CadenceType) -> List[Chord]:
+        self.voice_leader = VoiceLeader() if use_voice_leading else None
+        self.markov_selector = MarkovChordSelector() if use_corpus else None
+
+    def generate_progression(self, cadence_type: CadenceType) -> List[roman.RomanNumeral]:
         """
-        Generate a chord progression ending with the specified cadence.
+        Generate a chord progression ending with specified cadence.
 
         Args:
             cadence_type: The target cadence type
 
         Returns:
-            List of Chord objects forming a complete progression
+            List of music21 RomanNumeral objects forming a complete progression
+
+        Examples:
+            >>> from .cadences import CadenceType
+            >>> generator = ChordProgressionGenerator()
+            >>> progression = generator.generate_progression(CadenceType.PERFECT)
+            >>> len(progression) >= 4
+            True
         """
         # Determine total length
         total_length = random.randint(self.min_length, self.max_length)
@@ -68,23 +85,28 @@ class ChordProgressionGenerator:
         # Calculate how many chords we need before the cadence
         intro_length = total_length - 2
 
-        # Generate introduction chords
-        intro_chords = self._generate_intro(intro_length, penultimate_degree, cadence_type)
+        # Generate introduction chords (as scale degrees)
+        intro_degrees = self._generate_intro(intro_length, penultimate_degree, cadence_type)
 
-        # Create the cadence chords
-        # V chords often use 7th for stronger resolution
-        penult_seventh = self.use_sevenths and penultimate_degree == 5
+        # Combine intro + cadence
+        all_degrees = intro_degrees + [penultimate_degree, final_degree]
 
-        cadence_chords = [
-            Chord(penultimate_degree, use_seventh=penult_seventh),
-            Chord(final_degree, use_seventh=False)  # Final chord usually triad
-        ]
+        # Convert scale degrees to RomanNumeral objects
+        progression = []
+        for i, degree in enumerate(all_degrees):
+            # Use sevenths on degrees 2, 5, 6, 7 (except first and last chord)
+            use_seventh = (self.use_sevenths and
+                          degree in [2, 5, 6, 7] and
+                          i > 0 and
+                          i < len(all_degrees) - 1)
 
-        # Combine and return
-        progression = intro_chords + cadence_chords
+            chord = ChordFactory.create_chord(degree, self.key, use_seventh)
+            progression.append(chord)
+
         return progression
 
-    def _generate_intro(self, length: int, target_degree: int, cadence_type: CadenceType) -> List[Chord]:
+    def _generate_intro(self, length: int, target_degree: int,
+                       cadence_type: CadenceType) -> List[int]:
         """
         Generate introduction chords leading to the cadence.
 
@@ -94,138 +116,112 @@ class ChordProgressionGenerator:
             cadence_type: Type of cadence for contextual choices
 
         Returns:
-            List of Chord objects for the introduction
+            List of scale degrees for the introduction
+
+        Examples:
+            >>> generator = ChordProgressionGenerator()
+            >>> intro = generator._generate_intro(3, 5, CadenceType.PERFECT)
+            >>> len(intro) == 3
+            True
+            >>> intro[0] == 1  # Always starts with tonic
+            True
         """
         if length == 0:
             return []
 
-        intro_chords = []
-
-        # Always start with I (tonic) to establish key - use triad for stability
-        current_degree = 1
-        intro_chords.append(Chord(current_degree, use_seventh=False))
+        # Always start with I (tonic)
+        intro = [1]
+        current = 1
 
         # Generate middle chords
         for i in range(1, length):
-            # On the last intro chord, we need to connect to the cadence
-            if i == length - 1:
-                next_degree = self._find_chord_leading_to(current_degree, target_degree)
+            if self.use_corpus and self.markov_selector:
+                # Use Bach corpus patterns
+                next_degree = self.markov_selector.get_next_chord(
+                    current, cadence_type, self.corpus_temperature
+                )
+                if next_degree is None:
+                    # Corpus had no good option, use rule fallback
+                    next_degree = self._choose_next_chord_rules(current, target_degree)
             else:
-                # Generate a good next chord
-                next_degree = self._choose_next_chord(current_degree, cadence_type)
+                # Rule-based selection
+                next_degree = self._choose_next_chord_rules(current, target_degree)
 
-            # Use 7th chords for ii, V, vi, vii
-            use_seventh = self.use_sevenths and next_degree in [2, 5, 6, 7]
-            intro_chords.append(Chord(next_degree, use_seventh=use_seventh))
-            current_degree = next_degree
+            intro.append(next_degree)
+            current = next_degree
 
-        return intro_chords
+        return intro
 
-    def _choose_next_chord(self, current_degree: int, cadence_type: CadenceType) -> int:
+    def _choose_next_chord_rules(self, current: int, target_degree: int) -> int:
         """
-        Choose a good next chord following music theory rules.
+        Fallback rule-based chord selection.
 
         Args:
-            current_degree: Current scale degree
-            cadence_type: Type of cadence (for context)
+            current: Current scale degree
+            target_degree: Target scale degree (for context)
 
         Returns:
             Next scale degree
+
+        Examples:
+            >>> generator = ChordProgressionGenerator()
+            >>> next_chord = generator._choose_next_chord_rules(1, 5)
+            >>> next_chord in [2, 4, 5, 6]
+            True
         """
-        # Get common approach chords for this cadence type
-        good_chords = CadencePattern.get_common_approach_chords(cadence_type)
+        valid = self.STRONG_PROGRESSIONS.get(current, [1, 5])
 
-        # Find valid next chords from current position
-        valid_next = []
-        for next_degree in good_chords:
-            if next_degree != current_degree:  # Don't repeat the same chord
-                progression = (current_degree, next_degree)
-                # Check if it's a strong progression and not a weak one
-                if progression in self.STRONG_PROGRESSIONS or self._is_allowed_progression(progression):
-                    valid_next.append(next_degree)
+        # Prefer chords that lead toward the target
+        if target_degree in valid:
+            # 70% chance to go directly to target if it's a strong progression
+            if random.random() < 0.7:
+                return target_degree
 
-        # If we have valid options, choose randomly
-        if valid_next:
-            return random.choice(valid_next)
+        return random.choice(valid)
 
-        # Fallback: use any strong progression from current degree
-        for from_deg, to_deg in self.STRONG_PROGRESSIONS:
-            if from_deg == current_degree:
-                valid_next.append(to_deg)
-
-        if valid_next:
-            return random.choice(valid_next)
-
-        # Last resort: go to I or V
-        return 1 if current_degree != 1 else 5
-
-    def _find_chord_leading_to(self, current_degree: int, target_degree: int) -> int:
-        """
-        Find a chord that bridges from current to target degree.
-
-        Args:
-            current_degree: Current scale degree
-            target_degree: Target scale degree to reach
-
-        Returns:
-            Bridge scale degree
-        """
-        # If direct progression is strong, use it
-        if (current_degree, target_degree) in self.STRONG_PROGRESSIONS:
-            return target_degree
-
-        # Find intermediate chord
-        for intermediate in [1, 4, 5, 6, 2]:
-            if intermediate != current_degree and intermediate != target_degree:
-                if ((current_degree, intermediate) in self.STRONG_PROGRESSIONS and
-                    (intermediate, target_degree) in self.STRONG_PROGRESSIONS):
-                    return intermediate
-
-        # Fallback: return target directly
-        return target_degree
-
-    def _is_allowed_progression(self, progression: tuple) -> bool:
-        """
-        Check if a progression is allowed (not in weak progressions).
-
-        Args:
-            progression: Tuple of (from_degree, to_degree)
-
-        Returns:
-            True if allowed, False otherwise
-        """
-        return progression not in self.WEAK_PROGRESSIONS
-
-    def progression_to_midi(self, progression: List[Chord]) -> List[List[int]]:
+    def progression_to_midi(self, progression: List[roman.RomanNumeral]) -> List[List[int]]:
         """
         Convert a chord progression to MIDI note numbers.
 
         Args:
-            progression: List of Chord objects
+            progression: List of music21 RomanNumeral objects
 
         Returns:
             List of lists, where each inner list contains MIDI notes for one chord
+
+        Examples:
+            >>> from music21 import roman
+            >>> generator = ChordProgressionGenerator()
+            >>> chords = [roman.RomanNumeral('I', 'C'), roman.RomanNumeral('V', 'C')]
+            >>> midi = generator.progression_to_midi(chords)
+            >>> len(midi) == 2
+            True
+            >>> all(isinstance(chord, list) for chord in midi)
+            True
         """
         if self.use_voice_leading and self.voice_leader:
             # Apply voice leading algorithm
             return self.voice_leader.voice_progression(progression)
         else:
-            # Original behavior: root position, no voice leading
-            midi_progression = []
-            for chord in progression:
-                # Use octave 4 (middle C region) for a comfortable piano range
-                midi_notes = chord.to_midi_notes(base_octave=4)
-                midi_progression.append(midi_notes)
-            return midi_progression
+            # Simple root position fallback
+            return [ChordFactory.get_midi_notes(chord) for chord in progression]
 
-    def progression_to_symbols(self, progression: List[Chord]) -> List[str]:
+    def progression_to_symbols(self, progression: List[roman.RomanNumeral]) -> List[str]:
         """
         Convert a chord progression to Roman numeral symbols.
 
         Args:
-            progression: List of Chord objects
+            progression: List of music21 RomanNumeral objects
 
         Returns:
             List of Roman numeral strings
+
+        Examples:
+            >>> from music21 import roman
+            >>> generator = ChordProgressionGenerator()
+            >>> chords = [roman.RomanNumeral('I', 'C'), roman.RomanNumeral('V7', 'C')]
+            >>> symbols = generator.progression_to_symbols(chords)
+            >>> symbols
+            ['I', 'V7']
         """
-        return [chord.get_roman_numeral() for chord in progression]
+        return [ChordFactory.get_roman_numeral_string(chord) for chord in progression]
