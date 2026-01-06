@@ -74,13 +74,6 @@ app_ui = ui.page_fluid(
         class_="feedback-section"
     ),
 
-    # Notation Section
-    ui.div(
-        ui.div(id="notation-container"),
-        class_="notation-section",
-        style="display: none;"
-    ),
-
     # Next Cadence Button
     ui.div(
         ui.input_action_button(
@@ -90,6 +83,13 @@ app_ui = ui.page_fluid(
             style="display: none;"
         ),
         class_="next-section"
+    ),
+
+    # Notation Section
+    ui.div(
+        ui.div(id="notation-container"),
+        class_="notation-section",
+        style="display: none;"
     ),
 )
 
@@ -105,6 +105,7 @@ def server(input, output, session):
     game_state = reactive.Value("initial")  # "initial", "ready", "guessing", "correct", "hint_shown"
     feedback_msg = reactive.Value("")
     feedback_type = reactive.Value("info")  # "info", "error", "success"
+    disabled_buttons = reactive.Value([])  # Track buttons disabled due to wrong answers
 
     # Initialize: Fetch first cadence on app start
     @reactive.Effect
@@ -136,13 +137,18 @@ def server(input, output, session):
             game_state.set("ready")
             feedback_msg.set("Click 'Play Cadence' to begin")
             feedback_type.set("info")
+            disabled_buttons.set([])  # Reset disabled buttons for new cadence
 
-            # Update UI: enable play button, disable answer buttons
+            # Update UI: enable play button, disable answer buttons, show hint button
             await session.send_custom_message("updateButtonStates", {
                 "playEnabled": True,
                 "answersEnabled": False,
-                "nextVisible": False
+                "nextVisible": False,
+                "hintVisible": True
             })
+
+            # Reset button text (clear any emoji feedback)
+            await session.send_custom_message("resetButtonText", {})
 
             # Clear notation
             await session.send_custom_message("clearNotation", {})
@@ -195,7 +201,7 @@ def server(input, output, session):
         })
 
     # Answer button handlers
-    async def handle_guess(cadence_type: str):
+    async def handle_guess(cadence_type: str, button_id: str):
         if not has_played():
             feedback_msg.set("Please play the cadence first!")
             feedback_type.set("error")
@@ -220,7 +226,13 @@ def server(input, output, session):
             is_correct = guess_normalized == correct_cadence
 
             if is_correct:
-                # Correct answer
+                # Correct answer - add checkmark
+                await session.send_custom_message("updateButtonFeedback", {
+                    "btnId": button_id,
+                    "emoji": "✓",
+                    "originalText": cadence_type.capitalize()
+                })
+
                 feedback_msg.set("Correct! Well done!")
                 feedback_type.set("success")
                 game_state.set("correct")
@@ -233,23 +245,36 @@ def server(input, output, session):
                     "cadenceType": correct_cadence
                 })
 
-                # Show notation section and next button
+                # Show notation section and next button, hide hint button
                 await session.send_custom_message("updateButtonStates", {
                     "playEnabled": True,
                     "answersEnabled": False,
                     "nextVisible": True,
-                    "showNotation": True
+                    "showNotation": True,
+                    "hintVisible": False
                 })
             else:
-                # Incorrect answer
+                # Incorrect answer - add cross
+                await session.send_custom_message("updateButtonFeedback", {
+                    "btnId": button_id,
+                    "emoji": "✗",
+                    "originalText": cadence_type.capitalize()
+                })
+
+                # Add this button to disabled list
+                current_disabled = disabled_buttons()
+                current_disabled.append(button_id)
+                disabled_buttons.set(current_disabled)
+
                 feedback_msg.set("Not quite. Try again!")
                 feedback_type.set("error")
 
-                # Re-enable answer buttons for retry
+                # Re-enable answer buttons for retry (except disabled ones)
                 await session.send_custom_message("updateButtonStates", {
                     "playEnabled": True,
                     "answersEnabled": True,
-                    "nextVisible": False
+                    "nextVisible": False,
+                    "disabledButtons": current_disabled
                 })
 
         except Exception as e:
@@ -266,22 +291,22 @@ def server(input, output, session):
     @reactive.Effect
     @reactive.event(input.perfect_btn)
     async def _():
-        await handle_guess("perfect")
+        await handle_guess("perfect", "perfect_btn")
 
     @reactive.Effect
     @reactive.event(input.plagal_btn)
     async def _():
-        await handle_guess("plagal")
+        await handle_guess("plagal", "plagal_btn")
 
     @reactive.Effect
     @reactive.event(input.imperfect_btn)
     async def _():
-        await handle_guess("imperfect")
+        await handle_guess("imperfect", "imperfect_btn")
 
     @reactive.Effect
     @reactive.event(input.interrupted_btn)
     async def _():
-        await handle_guess("interrupted")
+        await handle_guess("interrupted", "interrupted_btn")
 
     # Hint button handler
     @reactive.Effect
@@ -305,12 +330,13 @@ def server(input, output, session):
             "cadenceType": current_cadence_type()
         })
 
-        # Show notation section and next button, disable answer buttons
+        # Show notation section and next button, disable answer buttons, hide hint button
         await session.send_custom_message("updateButtonStates", {
             "playEnabled": True,
             "answersEnabled": False,
             "nextVisible": True,
-            "showNotation": True
+            "showNotation": True,
+            "hintVisible": False
         })
 
     # Next button handler

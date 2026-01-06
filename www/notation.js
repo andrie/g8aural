@@ -1,6 +1,5 @@
 // Notation module for VexFlow integration with Shiny
-
-const VF = Vex.Flow;
+const VF = typeof Vex !== 'undefined' ? Vex.Flow : null;
 let renderer = null;
 let context = null;
 
@@ -94,8 +93,6 @@ function renderNotation(progression, noteNames, chordSymbols, cadenceType) {
         context.font = "16px Arial";
         context.fillText(`Cadence: ${cadenceType.charAt(0).toUpperCase() + cadenceType.slice(1)}`, 10, 180);
 
-        console.log("Notation rendered successfully");
-
     } catch (error) {
         console.error("Error rendering notation:", error);
     }
@@ -117,6 +114,12 @@ function updateButtonStates(states) {
         playBtn.disabled = !states.playEnabled;
     }
 
+    // Update hint button visibility
+    const hintBtn = document.getElementById("hint_btn");
+    if (hintBtn && states.hintVisible !== undefined) {
+        hintBtn.style.display = states.hintVisible ? "inline-block" : "none";
+    }
+
     // Update answer buttons
     const answerButtons = [
         "perfect_btn", "plagal_btn", "imperfect_btn", "interrupted_btn"
@@ -125,14 +128,16 @@ function updateButtonStates(states) {
     answerButtons.forEach(btnId => {
         const btn = document.getElementById(btnId);
         if (btn && states.answersEnabled !== undefined) {
-            btn.disabled = !states.answersEnabled;
+            // Check if this button is in the disabled list
+            const isDisabled = states.disabledButtons && states.disabledButtons.includes(btnId);
+            btn.disabled = !states.answersEnabled || isDisabled;
         }
     });
 
     // Update next button visibility
     const nextBtn = document.getElementById("next_btn");
     if (nextBtn && states.nextVisible !== undefined) {
-        nextBtn.style.display = states.nextVisible ? "block" : "none";
+        nextBtn.style.display = states.nextVisible ? "inline-block" : "none";
     }
 
     // Show/hide notation section
@@ -140,6 +145,67 @@ function updateButtonStates(states) {
     if (notationSection && states.showNotation !== undefined) {
         notationSection.style.display = states.showNotation ? "block" : "none";
     }
+}
+
+// Update button text with emoji feedback
+function updateButtonFeedback(btnId, emoji, originalText) {
+    const btn = document.getElementById(btnId);
+    if (!btn) {
+        console.error(`Button not found: ${btnId}`);
+        return;
+    }
+
+    // Find the action-label span inside the button
+    const label = btn.querySelector('.action-label');
+    if (!label) {
+        console.error(`Action label span not found in button: ${btnId}`);
+        return;
+    }
+
+    // Store original text if not already stored
+    if (!btn.dataset.originalText) {
+        btn.dataset.originalText = originalText;
+    }
+
+    // Update text content of the span
+    if (emoji) {
+        label.textContent = `${originalText} ${emoji}`;
+
+        // Add CSS class for styling
+        if (emoji === "✓") {
+            btn.classList.add("correct");
+            btn.classList.remove("incorrect");
+        } else if (emoji === "✗") {
+            btn.classList.add("incorrect");
+            btn.classList.remove("correct");
+        }
+    } else {
+        // Reset to original state
+        label.textContent = originalText;
+        btn.classList.remove("correct", "incorrect");
+    }
+}
+
+// Reset all cadence button text
+function resetButtonText() {
+    const buttonLabels = {
+        "perfect_btn": "Perfect",
+        "plagal_btn": "Plagal",
+        "imperfect_btn": "Imperfect",
+        "interrupted_btn": "Interrupted"
+    };
+
+    Object.entries(buttonLabels).forEach(([btnId, labelText]) => {
+        const btn = document.getElementById(btnId);
+        if (btn) {
+            const label = btn.querySelector('.action-label');
+            if (label) {
+                label.textContent = labelText;
+            }
+            btn.classList.remove("correct", "incorrect");
+            delete btn.dataset.originalText;
+        }
+    });
 }
 
 // Listen for custom messages from Shiny
@@ -156,9 +222,16 @@ if (window.Shiny) {
         updateButtonStates(message);
     });
 
+    Shiny.addCustomMessageHandler("updateButtonFeedback", function(message) {
+        updateButtonFeedback(message.btnId, message.emoji, message.originalText);
+    });
+
+    Shiny.addCustomMessageHandler("resetButtonText", function(message) {
+        resetButtonText();
+    });
+
     // Handle playback complete callback
     Shiny.addCustomMessageHandler("playbackComplete", function(message) {
         // This is called from audio.js, just acknowledge
-        console.log("Playback complete acknowledged");
     });
 }
