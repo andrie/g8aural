@@ -7,31 +7,58 @@ from typing import List, Tuple
 
 class CadenceType(Enum):
     """Types of cadences for Grade 8 aural training."""
-    PERFECT = "perfect"      # V → I
-    PLAGAL = "plagal"        # IV → I
-    IMPERFECT = "imperfect"  # (any) → V
-    INTERRUPTED = "interrupted"  # V → vi
+    PERFECT = "perfect"      # Ic → V(7) → I
+    PLAGAL = "plagal"        # I → IV → I
+    IMPERFECT = "imperfect"  # I → IV → V
+    INTERRUPTED = "interrupted"  # I → V(7) → vi
+
+
+# Grade 8 inversion rules for 3-chord cadence patterns
+# Format: {CadenceType: [(chord1_inversions), (chord2_inversions), (chord3_inversions)]}
+# Inversions: 0=root, 1=first, 2=second, 3=third (for 7th chords)
+GRADE_8_INVERSION_RULES = {
+    CadenceType.PERFECT: [
+        [2],        # Ic (second inversion - cadential 6/4)
+        [0, 1, 2],  # V or V7 (any inversion)
+        [0]         # I (root position)
+    ],
+    CadenceType.PLAGAL: [
+        [0, 1],     # I or I6 (root or first inversion)
+        [0, 1],     # IV or IV6 (root or first inversion)
+        [0]         # I (root position)
+    ],
+    CadenceType.IMPERFECT: [
+        [0, 1],     # I or I6 (root or first inversion)
+        [0, 1],     # IV or IV6 (root or first inversion)
+        [0, 1]      # V or V6 (root or first inversion)
+    ],
+    CadenceType.INTERRUPTED: [
+        [0, 1],     # I or I6 (root or first inversion)
+        [0, 1, 2],  # V or V7 (any inversion)
+        [0]         # vi (root position)
+    ],
+}
 
 
 class CadencePattern:
     """Defines the chord pattern for each cadence type."""
 
     @staticmethod
-    def get_cadence_chords(cadence_type: CadenceType) -> Tuple[int, int]:
+    def get_cadence_chords(cadence_type: CadenceType) -> Tuple[int, int, int]:
         """
-        Get the final two scale degrees for a cadence type.
+        Get the three scale degrees for a Grade 8 cadence pattern.
 
         Args:
             cadence_type: The type of cadence
 
         Returns:
-            Tuple of (penultimate_degree, final_degree)
+            Tuple of (first_degree, second_degree, third_degree)
         """
         patterns = {
-            CadenceType.PERFECT: (5, 1),      # V → I
-            CadenceType.PLAGAL: (4, 1),       # IV → I
-            CadenceType.IMPERFECT: (1, 5),    # I → V (common choice)
-            CadenceType.INTERRUPTED: (5, 6),  # V → vi
+            CadenceType.PERFECT: (1, 5, 1),      # Ic → V(7) → I
+            CadenceType.PLAGAL: (1, 4, 1),       # I → IV → I
+            CadenceType.IMPERFECT: (1, 4, 5),    # I → IV → V
+            CadenceType.INTERRUPTED: (1, 5, 6),  # I → V(7) → vi
         }
         return patterns[cadence_type]
 
@@ -56,6 +83,24 @@ class CadencePattern:
         return approaches[cadence_type]
 
     @staticmethod
+    def get_allowed_inversions(cadence_type: CadenceType) -> List[List[int]]:
+        """
+        Get the allowed inversions for each chord in a Grade 8 cadence pattern.
+
+        Args:
+            cadence_type: The type of cadence
+
+        Returns:
+            List of three lists, each containing allowed inversion numbers for that chord.
+            Inversions: 0=root, 1=first, 2=second, 3=third (for 7th chords)
+
+        Example:
+            >>> CadencePattern.get_allowed_inversions(CadenceType.PERFECT)
+            [[2], [0, 1, 2], [0]]  # Ic, V(7), I
+        """
+        return GRADE_8_INVERSION_RULES[cadence_type]
+
+    @staticmethod
     def get_display_name(cadence_type: CadenceType) -> str:
         """
         Get human-readable display name for cadence.
@@ -67,9 +112,9 @@ class CadencePattern:
             Display name string
         """
         names = {
-            CadenceType.PERFECT: "Perfect Cadence (V-I)",
-            CadenceType.PLAGAL: "Plagal Cadence (IV-I)",
-            CadenceType.IMPERFECT: "Imperfect Cadence (I-V)",
-            CadenceType.INTERRUPTED: "Interrupted Cadence (V-vi)",
+            CadenceType.PERFECT: "Perfect Cadence (Ic-V-I)",
+            CadenceType.PLAGAL: "Plagal Cadence (I-IV-I)",
+            CadenceType.IMPERFECT: "Imperfect Cadence (I-IV-V)",
+            CadenceType.INTERRUPTED: "Interrupted Cadence (I-V-vi)",
         }
         return names[cadence_type]

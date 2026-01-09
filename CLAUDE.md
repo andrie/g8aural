@@ -110,9 +110,10 @@ The core of this application is a sophisticated music theory engine that generat
    - Configurable temperature for randomness vs. predictability
 
 4. **progression.py**: Main generator (`ChordProgressionGenerator`)
-   - Hybrid approach: Bach corpus patterns + rule-based fallback
+   - **Hybrid mode (Grade 8)**: Generates 1-5 lead-in chords (including starting tonic) using Bach corpus patterns, then appends strict 3-chord Grade 8 cadence with inversion constraints. Total: 4-8 chords.
+   - **Pure mode (Grades 6-7)**: Generates only the 3-chord cadence pattern with Grade 8 inversion rules
    - Ensures progressions end with specified cadence type
-   - Generates 4-8 chord progressions
+   - Uses rule-based fallback when corpus unavailable
 
 5. **voice_leading.py**: 4-voice SATB voice leading with 1-step lookahead
    - Uses music21's VoiceLeadingQuartet for validation
@@ -120,6 +121,9 @@ The core of this application is a sophisticated music theory engine that generat
    - Optimizes for smooth voice motion
    - Always produces 4 voices (SATB)
    - MIDI range: 55-79 (optimized for treble clef)
+   - **Inversion constraints**: Optional control over chord inversions (root position, first inversion, etc.)
+   - **Graceful relaxation**: Automatically relaxes constraints if exact match impossible
+   - See `.claude/architecture/music-theory-api.md` for detailed API documentation
 
 6. **corpus_analyzer.py**: Offline script to extract patterns from Bach chorales
    - Run manually to regenerate corpus data: `python modules/music_theory/corpus_analyzer.py`
@@ -128,19 +132,31 @@ The core of this application is a sophisticated music theory engine that generat
 
 ### Generator Configuration
 
-Key parameters in `app.py:11-19`:
+Grade 8 configuration in `app.py` (hybrid mode):
 
 ```python
 generator = ChordProgressionGenerator(
-    min_length=4,              # Minimum chords in progression
-    max_length=8,              # Maximum chords in progression
+    min_length=4,              # Minimum total progression length (hybrid mode)
+    max_length=8,              # Maximum total progression length (hybrid mode)
     use_voice_leading=True,    # Enable 4-voice SATB
     use_sevenths=True,         # Allow 7th chords (V7, etc.)
     use_corpus=True,           # Use Bach corpus patterns
     corpus_temperature=0.8,    # Balance: 0.0=deterministic, 2.0=very random
-    keys=['C', 'c']           # Supported keys (C major, C minor)
+    keys=['C', 'c'],           # Supported keys (C major, C minor)
+    use_strict_cadence=True    # Hybrid mode: 1-5 lead-in + 3-chord cadence (4-8 total)
 )
 ```
+
+**Hybrid Mode Details**:
+- When `use_strict_cadence=True` (Grade 8): Generates 1-5 lead-in chords (including starting tonic) using Markov chain, then appends strict 3-chord Grade 8 cadence
+- Total progression length: 4-8 chords (min_length to max_length)
+- Inversion constraints apply ONLY to final 3 chords
+- Voice leading applied to entire progression for musical continuity
+
+**Pure Mode**:
+- When `use_strict_cadence=False` (Grades 6-7): Generates only 3-chord cadence
+- Total progression length: 3 chords
+- Inversion constraints apply to all 3 chords
 
 **Important**: `keys` is now a list. Generator randomly selects one key per progression for variety.
 
@@ -161,6 +177,36 @@ game_state = reactive.Value("initial")           # Game flow state
 
 ### Test Chord Generation
 
+**Test Hybrid Mode (Grade 8: 4-8 chords total)**:
+
+```bash
+python3 << 'EOF'
+from modules.music_theory.progression import ChordProgressionGenerator
+from modules.music_theory.cadences import CadenceType
+
+gen = ChordProgressionGenerator(
+    min_length=4,
+    max_length=8,
+    use_voice_leading=True,
+    use_sevenths=True,
+    use_corpus=True,
+    corpus_temperature=0.8,
+    keys=['C'],
+    use_strict_cadence=True  # Hybrid mode
+)
+
+for cadence_type in CadenceType:
+    prog = gen.generate_progression(cadence_type)
+    midi = gen.progression_to_midi(prog)
+    symbols = gen.progression_to_symbols(prog)
+    print(f'{cadence_type.value}: {len(prog)} chords - {" → ".join(symbols)}')
+    print(f'  Lead-in: {len(prog) - 3} chords, Cadence: 3 chords')
+    print(f'  Last 3 chords (cadence): {" → ".join(symbols[-3:])}')
+EOF
+```
+
+**Test Pure Mode (Grades 6-7: 3 chords only)**:
+
 ```bash
 python3 << 'EOF'
 from modules.music_theory.progression import ChordProgressionGenerator
@@ -171,7 +217,8 @@ gen = ChordProgressionGenerator(
     use_sevenths=True,
     use_corpus=True,
     corpus_temperature=0.8,
-    keys=['C']
+    keys=['C'],
+    use_strict_cadence=False  # Pure 3-chord mode
 )
 
 for cadence_type in CadenceType:
@@ -190,10 +237,10 @@ from modules.music_theory.progression import ChordProgressionGenerator
 from modules.music_theory.cadences import CadenceType
 
 for key in ['C', 'G', 'D', 'a', 'd']:  # lowercase = minor keys
-    gen = ChordProgressionGenerator(keys=[key])
+    gen = ChordProgressionGenerator(keys=[key], use_strict_cadence=True)
     prog = gen.generate_progression(CadenceType.PERFECT)
     symbols = gen.progression_to_symbols(prog)
-    print(f'{key}: {" → ".join(symbols)}')
+    print(f'{key}: {len(prog)} chords - {" → ".join(symbols)}')
 EOF
 ```
 
@@ -233,10 +280,10 @@ The voice leading engine uses 1-step lookahead:
 ### Cadence Type Determination
 
 Progressions are generated to end with a specific cadence:
-1. Generator creates 4-8 chord progression using Bach patterns
-2. Last two chords are replaced with the target cadence pattern
+1. Generator creates 1-5 lead-in chords using Bach patterns
+2. Appends the target 3-chord cadence pattern (total: 4-8 chords)
 3. Voice leading is applied across the entire progression
-4. Final cadence chords are highlighted in blue in notation
+4. Final 3 cadence chords are highlighted in blue in notation
 
 ## Extension Points
 
@@ -340,6 +387,10 @@ bd create "Optimize voice leading candidate generation" -t chore -p 3
 bd create "Add unit tests for voice_leading.py" -t chore -p 2
 ```
 
+### Issue closure
+
+IMPORTANT: Do not close an issue until the user confirmed that the issue has been resolved.  Always ask before closing an issue.
+
 ## Documentation
 
 Additional architecture documentation in `.claude/architecture/`:
@@ -352,6 +403,8 @@ Additional architecture documentation in `.claude/architecture/`:
 ## Key Constraints
 
 - **Always 4 voices**: Voice leading always produces 4-note chords (SATB). Don't try to generate 3-voice chords. Do not use duplicated notes - each voice should have a distinct note.
+- **Hybrid progression architecture**: Grade 8 uses hybrid mode (1-5 lead-in + strict 3-chord cadence = 4-8 total chords). Grades 6-7 use pure 3-chord mode.
+- **Inversion constraints**: Only apply to final 3 chords in hybrid mode, all 3 chords in pure mode.
 - **music21 is required**: Don't try to replace with simpler implementation. The musical quality depends on music21.
 - **Corpus data is precomputed**: Don't load Bach chorales at runtime. Use the precomputed JSON file.
 - **No backend server**: This is a single Shiny app. Don't split into separate frontend/backend.

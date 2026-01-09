@@ -28,34 +28,31 @@ CADENCE_TYPES_BY_GRADE = {
 # Generator configuration by grade level
 GENERATOR_CONFIG = {
     6: {
-        'min_length': 3,  # Not used in pure 3-chord mode
-        'max_length': 3,  # Not used in pure 3-chord mode
+        'min_length': 3,  # 3 chords for Grade 6
+        'max_length': 3,  # Fixed length
         'use_voice_leading': False,  # Simple root position only
         'use_sevenths': False,  # No 7th chords
         'use_corpus': True,  # Still use Bach patterns
         'corpus_temperature': 0.7,  # More predictable
-        'keys': KEYS_BY_GRADE[6],
-        'use_strict_cadence': False  # Pure 3-chord cadences (no lead-in)
+        'keys': KEYS_BY_GRADE[6]
     },
     7: {
-        'min_length': 4,  # Not used in pure 3-chord mode
-        'max_length': 5,  # Not used in pure 3-chord mode
+        'min_length': 4,  # 4-5 chords for Grade 7
+        'max_length': 5,
         'use_voice_leading': False,  # Still root position
         'use_sevenths': False,  # Keep triads only
         'use_corpus': True,
         'corpus_temperature': 0.7,
-        'keys': KEYS_BY_GRADE[7],
-        'use_strict_cadence': False  # Pure 3-chord cadences (no lead-in)
+        'keys': KEYS_BY_GRADE[7]
     },
     8: {
-        'min_length': 4,  # Minimum total progression length (4 chords)
-        'max_length': 8,  # Maximum total progression length (8 chords)
+        'min_length': 6,  # 6-8 chords for Grade 8
+        'max_length': 8,
         'use_voice_leading': True,  # Full SATB with inversions
         'use_sevenths': True,  # Grade 8 uses V7
         'use_corpus': True,
         'corpus_temperature': 0.8,  # More variation
-        'keys': KEYS_BY_GRADE[8],
-        'use_strict_cadence': True  # Hybrid mode: 1-5 lead-in + strict 3-chord cadence (4-8 total)
+        'keys': KEYS_BY_GRADE[8]
     }
 }
 
@@ -75,71 +72,13 @@ app_ui = ui.page_fluid(
         # Include custom JavaScript
         ui.tags.script(src="audio.js"),
         ui.tags.script(src="notation.js"),
-        ui.tags.script(src="grade-ui.js"),
     ),
 
     # Header
     ui.div(
-        ui.h1("Sharp Ear"),
-        ui.p("Interactive Aural Training for ABRSM Grades 6–8"),
+        ui.h1("Grade 8 Aural Cadence Training"),
+        ui.p("Practice identifying cadences by ear"),
         class_="header"
-    ),
-
-    # Grade Selection Section
-    ui.div(
-        ui.div(
-            "Current Level: Grade 6",
-            id="grade-label",
-            class_="grade-label"
-        ),
-        ui.input_slider(
-            "grade_slider",
-            label=None,  # No label (using custom label above)
-            min=6,
-            max=8,
-            value=6,
-            step=1,
-            width="300px"
-        ),
-        ui.div(
-            ui.span("Grade 6"),
-            ui.span("Grade 7"),
-            ui.span("Grade 8"),
-            class_="grade-markers"
-        ),
-        # Help tooltip
-        ui.div(
-            ui.tags.button(
-                ui.HTML("&#9432;"),  # Info icon (ℹ)
-                id="grade-info-btn",
-                class_="info-btn",
-                onclick="document.getElementById('grade-info-modal').style.display='flex'"
-            ),
-            class_="grade-info-container"
-        ),
-        class_="grade-selection"
-    ),
-
-    # Grade info modal (hidden by default)
-    ui.div(
-        ui.div(
-            ui.tags.span(
-                ui.HTML("&times;"),
-                class_="close-btn",
-                onclick="document.getElementById('grade-info-modal').style.display='none'"
-            ),
-            ui.h3("Grade Level Differences"),
-            ui.tags.ul(
-                ui.tags.li(ui.tags.strong("Grade 6:"), " Perfect & Imperfect cadences only (3 chords, root position)"),
-                ui.tags.li(ui.tags.strong("Grade 7:"), " Perfect, Imperfect & Interrupted cadences (3 chords, root position)"),
-                ui.tags.li(ui.tags.strong("Grade 8:"), " All four cadence types including Plagal (4-8 chords: 1-5 lead-in + strict 3-chord cadence, complex inversions)")
-            ),
-            ui.p(ui.tags.em("All grades use keys with up to 3 sharps or flats (ABRSM syllabus requirement)")),
-            id="grade-info-content"
-        ),
-        id="grade-info-modal",
-        class_="grade-info-modal",
-        style="display: none;"
     ),
 
     # Control Section

@@ -178,3 +178,48 @@ class ChordFactory:
             5
         """
         return chord.scaleDegree
+
+    @staticmethod
+    def detect_inversion(chord: roman.RomanNumeral) -> int:
+        """
+        Detect the inversion of a chord.
+
+        Args:
+            chord: music21 RomanNumeral object
+
+        Returns:
+            Inversion number: 0=root position, 1=first inversion (6),
+            2=second inversion (6/4), 3=third inversion (for 7th chords)
+
+        Examples:
+            >>> chord = ChordFactory.create_chord(1, 'C')
+            >>> ChordFactory.detect_inversion(chord)
+            0
+        """
+        return chord.inversion()
+
+    @staticmethod
+    def get_inversion_label(chord: roman.RomanNumeral) -> str:
+        """
+        Get human-readable inversion label.
+
+        Args:
+            chord: music21 RomanNumeral object
+
+        Returns:
+            Inversion label: "root position", "first inversion", "second inversion",
+            or "third inversion"
+
+        Examples:
+            >>> chord = ChordFactory.create_chord(1, 'C')
+            >>> ChordFactory.get_inversion_label(chord)
+            'root position'
+        """
+        inversion = chord.inversion()
+        labels = {
+            0: 'root position',
+            1: 'first inversion',
+            2: 'second inversion',
+            3: 'third inversion'
+        }
+        return labels.get(inversion, f'inversion {inversion}')

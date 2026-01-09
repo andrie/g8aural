@@ -91,7 +91,7 @@ body {
     color: #007bff;
     border-radius: 8px;
     cursor: pointer;
-    transition: all 0.3s ease;
+    transition: all 0.3s ease, opacity 0.3s ease, transform 0.3s ease;
 }
 
 .cadence-btn:hover:not(:disabled) {
@@ -195,6 +195,167 @@ body {
     box-shadow: 0 4px 8px rgba(0,0,0,0.2);
 }
 
+/* Grade slider container */
+.grade-selection {
+    margin: 20px 0;
+    padding: 15px;
+    background-color: #f8f9fa;
+    border-radius: 8px;
+    text-align: center;
+}
+
+
+.form-group.shiny-input-container {
+    margin: auto;
+}
+
+.grade-label {
+    font-size: 1.1em;
+    font-weight: 600;
+    margin-bottom: 10px;
+    color: #333;
+}
+
+/* Slider styling */
+.grade-slider {
+    width: 300px;
+    height: 8px;
+    background: linear-gradient(to right, #28a745, #ffc107, #dc3545);
+    border-radius: 5px;
+    outline: none;
+    -webkit-appearance: none;
+    margin: 0 auto;
+    display: block;
+}
+
+.grade-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: #007bff;
+    cursor: pointer;
+    border: 3px solid white;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.grade-slider::-moz-range-thumb {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: #007bff;
+    cursor: pointer;
+    border: 3px solid white;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.grade-markers {
+    display: flex;
+    justify-content: space-between;
+    width: 300px;
+    margin: 5px auto 0;
+    font-size: 0.9em;
+    color: #666;
+}
+
+/* Toast notification */
+.toast-notification {
+    position: fixed;
+    bottom: -100px;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: #333;
+    color: white;
+    padding: 12px 24px;
+    border-radius: 4px;
+    font-size: 0.95em;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+    transition: bottom 0.3s ease;
+    z-index: 1000;
+}
+
+.toast-notification.show {
+    bottom: 30px;
+}
+
+/* Smooth button hide transition */
+.cadence-btn[style*="display: none"] {
+    opacity: 0;
+    transform: scale(0.9);
+}
+
+/* Help tooltip styling */
+.grade-info-container {
+    text-align: center;
+    margin-top: 10px;
+}
+
+.info-btn {
+    background: rgba(0, 123, 255, 0.1);
+    border: 2px solid rgba(0, 123, 255, 0.3);
+    border-radius: 50%;
+    width: 30px;
+    height: 30px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-size: 1.2em;
+    color: #007bff;
+}
+
+.info-btn:hover {
+    background: rgba(0, 123, 255, 0.2);
+    transform: scale(1.1);
+}
+
+.grade-info-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#grade-info-content {
+    background: white;
+    padding: 30px;
+    border-radius: 12px;
+    max-width: 500px;
+    position: relative;
+}
+
+#grade-info-content h3 {
+    margin-top: 0;
+    color: #333;
+}
+
+#grade-info-content ul {
+    text-align: left;
+    line-height: 1.8;
+}
+
+#grade-info-content li {
+    margin-bottom: 10px;
+}
+
+.close-btn {
+    position: absolute;
+    top: 10px;
+    right: 15px;
+    font-size: 2em;
+    cursor: pointer;
+    color: #999;
+}
+
+.close-btn:hover {
+    color: #333;
+}
+
 /* Responsive Design */
 @media (max-width: 576px) {
     .answer-grid {
@@ -209,6 +370,16 @@ body {
     .cadence-btn {
         padding: 15px;
         font-size: 1em;
+    }
+
+    .grade-markers {
+        width: 250px;
+        font-size: 0.8em;
+    }
+
+    #grade-info-content {
+        margin: 20px;
+        padding: 20px;
     }
 }
 

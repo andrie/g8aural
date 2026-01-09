@@ -6,10 +6,13 @@ VoiceLeadingQuartet to validate transitions and a lookahead algorithm
 to prevent "painting into corners".
 """
 
+import logging
 from typing import List, Optional, Tuple
 from itertools import product
 from music21 import roman, pitch, voiceLeading
 from .roman_numerals import ChordFactory
+
+logger = logging.getLogger(__name__)
 
 
 class VoiceLeader:
@@ -27,7 +30,8 @@ class VoiceLeader:
         """Initialize voice leader."""
         pass
 
-    def voice_progression(self, chords: List[roman.RomanNumeral]) -> List[List[int]]:
+    def voice_progression(self, chords: List[roman.RomanNumeral],
+                         inversion_constraints: Optional[List[List[int]]] = None) -> List[List[int]]:
         """
         Voice chord progression with 1-step lookahead.
 
@@ -41,6 +45,10 @@ class VoiceLeader:
 
         Args:
             chords: List of music21 RomanNumeral objects
+            inversion_constraints: Optional list of allowed inversions per chord.
+                Each element is a list of allowed inversion numbers (0-3).
+                Example: [[0, 1], [2], [0]] means chord 0 can be root or first inversion,
+                chord 1 must be second inversion, chord 2 must be root position.
 
         Returns:
             List of MIDI note lists (4 voices per chord)
@@ -58,7 +66,15 @@ class VoiceLeader:
             return []
 
         # Generate candidate voicings for all chords
-        all_candidates = [self._generate_candidates(chord) for chord in chords]
+        all_candidates = []
+        for i, chord in enumerate(chords):
+            # Get inversion constraint for this chord if specified
+            allowed_inversions = None
+            if inversion_constraints and i < len(inversion_constraints):
+                allowed_inversions = inversion_constraints[i]
+
+            candidates = self._generate_candidates(chord, allowed_inversions)
+            all_candidates.append(candidates)
 
         # Dynamic programming with lookahead
         voiced_progression = []
@@ -156,12 +172,16 @@ class VoiceLeader:
 
         return result
 
-    def _generate_candidates(self, chord: roman.RomanNumeral) -> List[List[int]]:
+    def _generate_candidates(self, chord: roman.RomanNumeral,
+                            allowed_inversions: Optional[List[int]] = None) -> List[List[int]]:
         """
         Generate valid voicings within voice ranges.
 
         Args:
             chord: music21 RomanNumeral object
+            allowed_inversions: Optional list of allowed inversion numbers (0-3).
+                If None, all inversions are allowed. If specified, only voicings
+                with bass notes that produce the allowed inversions will be generated.
 
         Returns:
             List of candidate voicings (each is a list of 4 MIDI notes for SATB)
@@ -249,12 +269,118 @@ class VoiceLeader:
                             if pitch_classes == required_pcs and self._is_valid_voicing(voicing):
                                 candidates.append(voicing)
 
+        # Filter by allowed inversions if specified
+        if allowed_inversions is not None:
+            filtered_candidates = []
+            for voicing in candidates:
+                inversion = self._detect_voicing_inversion(chord, voicing)
+                if inversion in allowed_inversions:
+                    filtered_candidates.append(voicing)
+
+            # Graceful constraint relaxation if no candidates match
+            if not filtered_candidates:
+                logger.info(f"No candidates match exact inversion constraints {allowed_inversions}, "
+                           "trying adjacent inversions")
+                # Try allowing adjacent inversions (e.g., if [0] requested, try [0, 1])
+                relaxed_inversions = set(allowed_inversions)
+                for inv in allowed_inversions:
+                    if inv > 0:
+                        relaxed_inversions.add(inv - 1)
+                    if inv < 3:
+                        relaxed_inversions.add(inv + 1)
+
+                for voicing in candidates:
+                    inversion = self._detect_voicing_inversion(chord, voicing)
+                    if inversion in relaxed_inversions:
+                        filtered_candidates.append(voicing)
+
+                # If still no candidates, fall back to any inversion
+                if not filtered_candidates:
+                    logger.warning(f"No candidates match relaxed inversions {relaxed_inversions}, "
+                                  "using any available inversion")
+                    filtered_candidates = candidates
+                else:
+                    logger.info(f"Found {len(filtered_candidates)} candidates with relaxed inversions")
+
+            candidates = filtered_candidates
+
         # Limit candidates to avoid excessive computation
         return candidates[:200]
 
+    def _detect_voicing_inversion(self, chord: roman.RomanNumeral, voicing: List[int]) -> int:
+        """
+        Detect the inversion of a voicing based on which chord tone is in the bass.
+
+        Args:
+            chord: music21 RomanNumeral object
+            voicing: List of 4 MIDI notes [bass, tenor, alto, soprano]
+
+        Returns:
+            Inversion number: 0=root position, 1=first inversion (3rd in bass),
+            2=second inversion (5th in bass), 3=third inversion (7th in bass)
+
+        Examples:
+            >>> from music21 import roman
+            >>> vl = VoiceLeader()
+            >>> chord = roman.RomanNumeral('I', 'C')
+            >>> vl._detect_voicing_inversion(chord, [60, 64, 67, 72])  # C in bass
+            0
+            >>> vl._detect_voicing_inversion(chord, [64, 67, 72, 76])  # E in bass
+            1
+        """
+        if not voicing:
+            return 0
+
+        bass_midi = voicing[0]
+        bass_pitch_class = bass_midi % 12
+
+        # Get the chord's pitches ordered by their role (root, third, fifth, seventh)
+        chord_pitches = chord.pitches
+        chord_pitch_classes = [p.midi % 12 for p in chord_pitches]
+
+        # Find which chord member is in the bass
+        # The inversion corresponds to the position of the bass note in the chord structure
+        try:
+            # Get the root of the chord
+            root_pc = chord.root().midi % 12
+
+            # Calculate interval from root to bass note (mod 12)
+            interval_from_root = (bass_pitch_class - root_pc) % 12
+
+            # Map interval to inversion
+            # Root (0 semitones) = root position (0)
+            # Third (3-4 semitones) = first inversion (1)
+            # Fifth (7 semitones) = second inversion (2)
+            # Seventh (10-11 semitones) = third inversion (3)
+
+            if interval_from_root == 0:
+                return 0  # Root position
+            elif interval_from_root in [3, 4]:
+                return 1  # First inversion (third in bass)
+            elif interval_from_root == 7:
+                return 2  # Second inversion (fifth in bass)
+            elif interval_from_root in [10, 11]:
+                return 3  # Third inversion (seventh in bass)
+            else:
+                # Fallback: check against chord members in order
+                if len(chord_pitch_classes) > 0 and bass_pitch_class == chord_pitch_classes[0]:
+                    return 0
+                elif len(chord_pitch_classes) > 1 and bass_pitch_class == chord_pitch_classes[1]:
+                    return 1
+                elif len(chord_pitch_classes) > 2 and bass_pitch_class == chord_pitch_classes[2]:
+                    return 2
+                elif len(chord_pitch_classes) > 3 and bass_pitch_class == chord_pitch_classes[3]:
+                    return 3
+                else:
+                    return 0
+
+        except Exception:
+            # If something goes wrong, default to root position
+            return 0
+
     def _is_valid_voicing(self, voicing: List[int]) -> bool:
         """
-        Check if voicing is valid (reasonable spacing, no voice crossing).
+        Check if voicing is valid (reasonable spacing, no voice crossing, no duplicate pitches).
 
         Args:
             voicing: List of 4 MIDI notes [bass, tenor, alto, soprano]
@@ -266,8 +392,14 @@ class VoiceLeader:
             >>> vl = VoiceLeader()
             >>> vl._is_valid_voicing([60, 64, 67, 72])
             True
+            >>> vl._is_valid_voicing([60, 60, 64, 67])  # Duplicate MIDI note
+            False
         """
         if len(voicing) != 4:
+            return False
+
+        # CRITICAL: All 4 MIDI notes must be unique (no duplicate pitches in same octave)
+        if len(set(voicing)) != 4:
             return False
 
         # Check spacing between upper voices (no more than an octave)

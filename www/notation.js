@@ -28,15 +28,50 @@ function midiToVexFlowNote(midiNumber) {
     return `${note}/${octave}`;
 }
 
+// Map music21 key names to VexFlow key signatures
+function getKeySignature(keyName) {
+    // Map music21 key format to VexFlow key signature format
+    // music21 uses lowercase for minor (e.g., 'a', 'd', 'f#')
+    // VexFlow uses major key names with 'm' suffix for minor (e.g., 'Am', 'Dm', 'F#m')
+    const signatures = {
+        'C': 'C',      // C major: 0 sharps/flats
+        'G': 'G',      // G major: 1 sharp
+        'D': 'D',      // D major: 2 sharps
+        'A': 'A',      // A major: 3 sharps
+        'F': 'F',      // F major: 1 flat
+        'Bb': 'Bb',    // Bb major: 2 flats
+        'B-': 'Bb',    // Alternative notation
+        'Eb': 'Eb',    // Eb major: 3 flats
+        'E-': 'Eb',    // Alternative notation
+        'a': 'Am',     // A minor: 0 sharps/flats
+        'e': 'Em',     // E minor: 1 sharp
+        'b': 'Bm',     // B minor: 2 sharps
+        'd': 'Dm',     // D minor: 1 flat
+        'g': 'Gm',     // G minor: 2 flats
+        'c': 'Cm',     // C minor: 3 flats
+        'f#': 'F#m',   // F# minor: 3 sharps
+        'f♯': 'F#m'    // Alternative notation
+    };
+
+    return signatures[keyName] || 'C';  // Default to C major if key not found
+}
+
 // Render the chord progression as notation
-function renderNotation(progression, noteNames, chordSymbols, cadenceType) {
+function renderNotation(progression, noteNames, chordSymbols, cadenceType, key) {
     try {
         // Initialize renderer
         initNotation();
 
-        // Create stave
+        // Create stave with key signature
         const stave = new VF.Stave(10, 40, 680);
         stave.addClef("treble");
+
+        // Add key signature if key is provided
+        if (key) {
+            const vexflowKey = getKeySignature(key);
+            stave.addKeySignature(vexflowKey);
+        }
+
         stave.setContext(context).draw();
 
         // Convert progression to VexFlow notes
@@ -56,22 +91,32 @@ function renderNotation(progression, noteNames, chordSymbols, cadenceType) {
                 duration: "w" // Whole note
             });
 
-            // Add chord symbol annotation
-            if (chordSymbols && chordSymbols[index]) {
-                staveNote.addModifier(
-                    new VF.Annotation(chordSymbols[index])
-                        .setFont("Arial", 12, "bold")
-                        .setVerticalJustification(VF.Annotation.VerticalJustify.TOP),
-                    0
-                );
-            }
+            // Visual distinction: lead-in chords vs final cadence
+            const isCadenceChord = index >= chordCount - 3;
+            const isLeadInChord = !isCadenceChord && chordCount > 3;
 
-            // Highlight final two chords (the cadence)
-            if (index >= chordCount - 2) {
-                // Add visual emphasis (could use different color or box)
+            if (isCadenceChord) {
+                // Highlight final three chords (the cadence) in blue
                 noteStrings.forEach((_, i) => {
                     staveNote.setKeyStyle(i, { fillStyle: "blue", strokeStyle: "blue" });
                 });
+            } else if (isLeadInChord) {
+                // Gray out lead-in chords for visual contrast
+                noteStrings.forEach((_, i) => {
+                    staveNote.setKeyStyle(i, { fillStyle: "#666", strokeStyle: "#666" });
+                });
+            }
+
+            // Add chord symbol annotation with matching color
+            if (chordSymbols && chordSymbols[index]) {
+                const annotationColor = isCadenceChord ? "blue" : (isLeadInChord ? "#666" : "black");
+                staveNote.addModifier(
+                    new VF.Annotation(chordSymbols[index])
+                        .setFont("Arial", 12, "bold")
+                        .setVerticalJustification(VF.Annotation.VerticalJustify.TOP)
+                        .setColor(annotationColor),
+                    0
+                );
             }
 
             notes.push(staveNote);
@@ -211,7 +256,7 @@ function resetButtonText() {
 // Listen for custom messages from Shiny
 if (window.Shiny) {
     Shiny.addCustomMessageHandler("renderNotation", function(message) {
-        renderNotation(message.progression, message.noteNames, message.chordSymbols, message.cadenceType);
+        renderNotation(message.progression, message.noteNames, message.chordSymbols, message.cadenceType, message.key);
     });
 
     Shiny.addCustomMessageHandler("clearNotation", function(message) {
