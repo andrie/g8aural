@@ -7,6 +7,15 @@ from pathlib import Path
 from modules.music_theory.cadences import CadenceType
 from modules.music_theory.progression import ChordProgressionGenerator
 from config.app_config import KEYS_BY_GRADE, CADENCE_TYPES_BY_GRADE, GENERATOR_CONFIG
+from ui.components import (
+    create_header,
+    create_grade_selection,
+    create_control_section,
+    create_answer_section,
+    create_feedback_section,
+    create_next_button_section,
+    create_notation_section
+)
 
 # Initialize progression generator (will be updated based on grade_level)
 # Default to Grade 6 configuration
@@ -26,123 +35,14 @@ app_ui = ui.page_fluid(
         ui.tags.script(src="notation.js"),
         ui.tags.script(src="grade-ui.js"),
     ),
-
-    # Header
-    ui.div(
-        ui.h1("Sharp Ear"),
-        ui.p("Interactive Aural Training for ABRSM Grades 6–8"),
-        class_="header"
-    ),
-
-    # Grade Selection Section
-    ui.div(
-        ui.div(
-            "Current Level: Grade 6",
-            id="grade-label",
-            class_="grade-label"
-        ),
-        ui.input_slider(
-            "grade_slider",
-            label=None,  # No label (using custom label above)
-            min=6,
-            max=8,
-            value=6,
-            step=1,
-            width="300px"
-        ),
-        ui.div(
-            ui.span("Grade 6"),
-            ui.span("Grade 7"),
-            ui.span("Grade 8"),
-            class_="grade-markers"
-        ),
-        # Help tooltip
-        ui.div(
-            ui.tags.button(
-                ui.HTML("&#9432;"),  # Info icon (ℹ)
-                id="grade-info-btn",
-                class_="info-btn",
-                onclick="document.getElementById('grade-info-modal').style.display='flex'"
-            ),
-            class_="grade-info-container"
-        ),
-        class_="grade-selection"
-    ),
-
-    # Grade info modal (hidden by default)
-    ui.div(
-        ui.div(
-            ui.tags.span(
-                ui.HTML("&times;"),
-                class_="close-btn",
-                onclick="document.getElementById('grade-info-modal').style.display='none'"
-            ),
-            ui.h3("Grade Level Differences"),
-            ui.tags.ul(
-                ui.tags.li(ui.tags.strong("Grade 6:"), " Perfect & Imperfect cadences only (3 chords, root position)"),
-                ui.tags.li(ui.tags.strong("Grade 7:"), " Perfect, Imperfect & Interrupted cadences (3 chords, root position)"),
-                ui.tags.li(ui.tags.strong("Grade 8:"), " All four cadence types including Plagal (4-8 chords: 1-5 lead-in + strict 3-chord cadence, complex inversions)")
-            ),
-            ui.p(ui.tags.em("All grades use keys with up to 3 sharps or flats (ABRSM syllabus requirement)")),
-            id="grade-info-content"
-        ),
-        id="grade-info-modal",
-        class_="grade-info-modal",
-        style="display: none;"
-    ),
-
-    # Control Section
-    ui.div(
-        ui.input_action_button(
-            "play_btn",
-            "Play Cadence",
-            class_="btn-primary btn-lg"
-        ),
-        ui.input_action_button(
-            "hint_btn",
-            "Show Hint",
-            class_="btn-warning btn-lg",
-            style="margin-left: 10px;"
-        ),
-        class_="control-section"
-    ),
-
-    # Answer Section
-    ui.div(
-        ui.h3("Select the cadence type:"),
-        ui.div(
-            ui.input_action_button("perfect_btn", "Perfect", class_="cadence-btn"),
-            ui.input_action_button("plagal_btn", "Plagal", class_="cadence-btn"),
-            ui.input_action_button("imperfect_btn", "Imperfect", class_="cadence-btn"),
-            ui.input_action_button("interrupted_btn", "Interrupted", class_="cadence-btn"),
-            class_="answer-grid"
-        ),
-        class_="answer-section"
-    ),
-
-    # Feedback Section
-    ui.div(
-        ui.output_ui("feedback_message"),
-        class_="feedback-section"
-    ),
-
-    # Next Cadence Button
-    ui.div(
-        ui.input_action_button(
-            "next_btn",
-            "Next Cadence",
-            class_="btn-success btn-lg",
-            style="display: none;"
-        ),
-        class_="next-section"
-    ),
-
-    # Notation Section
-    ui.div(
-        ui.div(id="notation-container"),
-        class_="notation-section",
-        style="display: none;"
-    ),
+    # UI Components
+    create_header(),
+    *create_grade_selection(),  # Unpacks list of components (slider + modal)
+    create_control_section(),
+    create_answer_section(),
+    create_feedback_section(),
+    create_next_button_section(),
+    create_notation_section(),
 )
 
 # Server logic
