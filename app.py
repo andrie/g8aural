@@ -25,7 +25,25 @@ from handlers.game_logic import (
     initialize_new_cadence
 )
 
-# UI Layout
+
+# Tab UI Components
+def create_cadence_tab_ui():
+    """
+    Create UI for cadence identification tab.
+
+    Returns:
+        List of UI components for cadence identification
+    """
+    return [
+        create_control_section(),
+        create_answer_section(),
+        create_feedback_section(),
+        create_next_button_section(),
+        create_notation_section(),
+    ]
+
+
+# UI Layout with tab structure
 app_ui = ui.page_fluid(
     # Include custom CSS and JavaScript
     ui.tags.head(
@@ -39,100 +57,34 @@ app_ui = ui.page_fluid(
         ui.tags.script(src="notation.js"),
         ui.tags.script(src="grade-ui.js"),
     ),
-    # UI Components
+    # Header and grade selection (shared across all tabs)
     create_header(),
     *create_grade_selection(),  # Unpacks list of components (slider + modal)
-    create_control_section(),
-    create_answer_section(),
-    create_feedback_section(),
-    create_next_button_section(),
-    create_notation_section(),
+    # Tab navigation
+    ui.navset_tab(
+        ui.nav_panel(
+            "Cadence Identification",
+            *create_cadence_tab_ui()
+        ),
+        id="main_tabs"
+    ),
 )
 
-# Server logic
-def server(input, output, session):
-    # Grouped reactive state
-    progression_state = ProgressionState.create()
-    feedback_state = FeedbackState.create()
-    game_flow = GameFlowState.create()
-    grade_state = GradeState.create()
+# Tab Server Logic
+def create_cadence_tab_server(input, output, session, progression_state, feedback_state, game_flow, grade_state, generator):
+    """
+    Create server logic for cadence identification tab.
 
-    # Reactive generator (no global variable!)
-    generator = reactive.Value(
-        ChordProgressionGenerator(**GENERATOR_CONFIG[6])
-    )
-
-    # Initialize: Request saved grade from localStorage
-    @reactive.Effect
-    async def _():
-        # Request saved grade from localStorage
-        await session.send_custom_message("requestSavedGrade", {})
-
-    # Handle saved grade level restoration from localStorage
-    @reactive.effect
-    @reactive.event(input.saved_grade_level)
-    async def _():
-        saved_grade = input.saved_grade_level()
-        if saved_grade and saved_grade in [6, 7, 8]:
-            grade_state.level.set(saved_grade)
-            # Reinitialize generator with saved grade
-            config = GENERATOR_CONFIG[saved_grade]
-            generator.set(ChordProgressionGenerator(**config))
-
-            # Update slider to reflect saved grade (must use Shiny's API)
-            ui.update_slider("grade_slider", value=saved_grade)
-
-            # Update UI to reflect saved grade
-            await session.send_custom_message("updateGradeUI", {
-                "grade": saved_grade,
-                "availableCadences": [ct.value for ct in CADENCE_TYPES_BY_GRADE[saved_grade]]
-            })
-
-            # Generate first cadence after restoring grade
-            if game_flow.state() == "initial":
-                await fetch_new_cadence()
-
-        # Always mark grade restoration as complete (even if no valid saved grade)
-        # This allows the slider to start working after initialization
-        grade_state.restored.set(True)
-
-    # Handle grade level changes
-    @reactive.Effect
-    @reactive.event(input.grade_slider)
-    async def _():
-        # Don't process slider changes until grade restoration is complete
-        # This prevents the slider's initial value (6) from overwriting the restored grade
-        if not grade_state.restored():
-            return
-
-        new_grade = int(input.grade_slider())
-
-        # Only process if grade actually changed (avoid duplicate updates)
-        if new_grade == grade_state.level():
-            return
-
-        grade_state.level.set(new_grade)
-
-        # Save to localStorage
-        await session.send_custom_message("saveGradeLevel", {
-            "grade": new_grade
-        })
-
-        # Reinitialize generator with new config
-        config = GENERATOR_CONFIG[new_grade]
-        generator.set(ChordProgressionGenerator(**config))
-
-        # Update button visibility
-        await session.send_custom_message("updateGradeUI", {
-            "grade": new_grade,
-            "availableCadences": [ct.value for ct in CADENCE_TYPES_BY_GRADE[new_grade]]
-        })
-
-        # Show toast notification
-        await session.send_custom_message("showToast", {
-            "message": f"Grade changed to {new_grade}. Click 'Next Cadence' to start."
-        })
-
+    Args:
+        input: Shiny input object
+        output: Shiny output object
+        session: Shiny session object
+        progression_state: ProgressionState instance
+        feedback_state: FeedbackState instance
+        game_flow: GameFlowState instance
+        grade_state: GradeState instance
+        generator: Reactive value containing ChordProgressionGenerator
+    """
     # Generate new cadence locally
     async def fetch_new_cadence():
         try:
@@ -308,6 +260,100 @@ def server(input, output, session):
 
         css_class = f"alert alert-{msg_type}"
         return ui.div(msg, class_=css_class)
+
+    # Return fetch_new_cadence for use in grade initialization
+    return fetch_new_cadence
+
+
+# Server logic
+def server(input, output, session):
+    # Grouped reactive state
+    progression_state = ProgressionState.create()
+    feedback_state = FeedbackState.create()
+    game_flow = GameFlowState.create()
+    grade_state = GradeState.create()
+
+    # Reactive generator (no global variable!)
+    generator = reactive.Value(
+        ChordProgressionGenerator(**GENERATOR_CONFIG[6])
+    )
+
+    # Initialize cadence tab server logic and get fetch_new_cadence function
+    fetch_new_cadence = create_cadence_tab_server(
+        input, output, session,
+        progression_state, feedback_state, game_flow, grade_state, generator
+    )
+
+    # Initialize: Request saved grade from localStorage
+    @reactive.Effect
+    async def _():
+        # Request saved grade from localStorage
+        await session.send_custom_message("requestSavedGrade", {})
+
+    # Handle saved grade level restoration from localStorage
+    @reactive.effect
+    @reactive.event(input.saved_grade_level)
+    async def _():
+        saved_grade = input.saved_grade_level()
+        if saved_grade and saved_grade in [6, 7, 8]:
+            grade_state.level.set(saved_grade)
+            # Reinitialize generator with saved grade
+            config = GENERATOR_CONFIG[saved_grade]
+            generator.set(ChordProgressionGenerator(**config))
+
+            # Update slider to reflect saved grade (must use Shiny's API)
+            ui.update_slider("grade_slider", value=saved_grade)
+
+            # Update UI to reflect saved grade
+            await session.send_custom_message("updateGradeUI", {
+                "grade": saved_grade,
+                "availableCadences": [ct.value for ct in CADENCE_TYPES_BY_GRADE[saved_grade]]
+            })
+
+            # Generate first cadence after restoring grade
+            if game_flow.state() == "initial":
+                await fetch_new_cadence()
+
+        # Always mark grade restoration as complete (even if no valid saved grade)
+        # This allows the slider to start working after initialization
+        grade_state.restored.set(True)
+
+    # Handle grade level changes
+    @reactive.Effect
+    @reactive.event(input.grade_slider)
+    async def _():
+        # Don't process slider changes until grade restoration is complete
+        # This prevents the slider's initial value (6) from overwriting the restored grade
+        if not grade_state.restored():
+            return
+
+        new_grade = int(input.grade_slider())
+
+        # Only process if grade actually changed (avoid duplicate updates)
+        if new_grade == grade_state.level():
+            return
+
+        grade_state.level.set(new_grade)
+
+        # Save to localStorage
+        await session.send_custom_message("saveGradeLevel", {
+            "grade": new_grade
+        })
+
+        # Reinitialize generator with new config
+        config = GENERATOR_CONFIG[new_grade]
+        generator.set(ChordProgressionGenerator(**config))
+
+        # Update button visibility
+        await session.send_custom_message("updateGradeUI", {
+            "grade": new_grade,
+            "availableCadences": [ct.value for ct in CADENCE_TYPES_BY_GRADE[new_grade]]
+        })
+
+        # Show toast notification
+        await session.send_custom_message("showToast", {
+            "message": f"Grade changed to {new_grade}. Click 'Next Cadence' to start."
+        })
 
 # Create app with static files from www directory
 www_dir = Path(__file__).parent / "www"
