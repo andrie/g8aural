@@ -16,94 +16,168 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 from modules.music_theory.progression import ChordProgressionGenerator
 from modules.music_theory.cadences import CadenceType
 
-def test_cadence_type(cadence_type: CadenceType, generator: ChordProgressionGenerator):
-    """Test a specific cadence type."""
-    print(f"\n{'='*60}")
-    print(f"Testing {cadence_type.value.upper()} cadence")
-    print(f"{'='*60}")
+try:
+    import pytest
+    HAS_PYTEST = True
+except ImportError:
+    HAS_PYTEST = False
 
-    try:
+
+class TestProgressionGeneration:
+    """Test suite for 3-chord cadence generation with inversion constraints."""
+
+    @classmethod
+    def setup_class(cls):
+        """Create generator instance for all tests."""
+        cls.generator = ChordProgressionGenerator(
+            min_length=3,
+            max_length=3,
+            use_voice_leading=True,
+            use_sevenths=True,
+            use_corpus=False,  # Disable corpus for predictable testing
+            keys=['C'],
+            use_strict_cadence=False  # Pure 3-chord mode
+        )
+
+    def _validate_cadence(self, cadence_type: CadenceType, verbose: bool = False):
+        """
+        Validate a specific cadence type.
+
+        Args:
+            cadence_type: The cadence type to test
+            verbose: If True, print detailed output (useful for standalone execution)
+
+        Raises:
+            AssertionError: If validation fails
+        """
+        if verbose:
+            print(f"\n{'='*60}")
+            print(f"Testing {cadence_type.value.upper()} cadence")
+            print(f"{'='*60}")
+
         # Generate progression
-        prog = generator.generate_progression(cadence_type)
+        prog = self.generator.generate_progression(cadence_type)
 
         # Get symbols and MIDI
-        symbols = generator.progression_to_symbols(prog)
-        midi = generator.progression_to_midi(prog)
-        inversions = generator.progression_to_inversions(prog, midi)
-        note_names = generator.progression_to_note_names(prog)
+        symbols = self.generator.progression_to_symbols(prog)
+        midi = self.generator.progression_to_midi(prog)
+        inversions = self.generator.progression_to_inversions(prog, midi)
+        note_names = self.generator.progression_to_note_names(prog)
 
         # Get expected constraints
-        constraints = generator._generate_inversion_constraints(cadence_type)
+        constraints = self.generator._generate_inversion_constraints(cadence_type)
 
-        # Display results
-        print(f"\nProgression length: {len(prog)}")
-        print(f"Chord symbols: {' → '.join(symbols)}")
-        print(f"\nDetailed chord information:")
+        if verbose:
+            # Display results
+            print(f"\nProgression length: {len(prog)}")
+            print(f"Chord symbols: {' → '.join(symbols)}")
+            print(f"\nDetailed chord information:")
 
-        for i, (symbol, voicing, inversion, names, expected_inversions) in enumerate(
-            zip(symbols, midi, inversions, note_names, constraints)
-        ):
-            status = "✓" if inversion in expected_inversions else "✗"
-            print(f"  Chord {i+1}: {symbol:6s} | Inversion: {inversion} | Expected: {expected_inversions} {status}")
-            print(f"           MIDI: {voicing}")
-            print(f"           Notes: {names}")
+            for i, (symbol, voicing, inversion, names, expected_inversions) in enumerate(
+                zip(symbols, midi, inversions, note_names, constraints)
+            ):
+                status = "✓" if inversion in expected_inversions else "✗"
+                print(f"  Chord {i+1}: {symbol:6s} | Inversion: {inversion} | Expected: {expected_inversions} {status}")
+                print(f"           MIDI: {voicing}")
+                print(f"           Notes: {names}")
 
-        # Validation
-        print(f"\nValidation:")
-        print(f"  - Length is 3: {'✓' if len(prog) == 3 else '✗ FAILED'}")
-        print(f"  - All chords have 4 voices: {'✓' if all(len(v) == 4 for v in midi) else '✗ FAILED'}")
+        # Validation with assertions
+        assert len(prog) == 3, f"Expected 3 chords, got {len(prog)}"
+
+        if verbose:
+            print(f"\nValidation:")
+            print(f"  - Length is 3: ✓")
+
+        assert all(len(v) == 4 for v in midi), "All chords must have 4 voices"
+
+        if verbose:
+            print(f"  - All chords have 4 voices: ✓")
 
         constraints_satisfied = all(
             inv in expected for inv, expected in zip(inversions, constraints)
         )
-        print(f"  - Inversion constraints satisfied: {'✓' if constraints_satisfied else '✗ FAILED'}")
 
-        if constraints_satisfied:
+        if not constraints_satisfied:
+            # Build detailed error message
+            violations = []
+            for i, (inv, expected) in enumerate(zip(inversions, constraints)):
+                if inv not in expected:
+                    violations.append(f"Chord {i+1}: got inversion {inv}, expected one of {expected}")
+            error_msg = f"Inversion constraints not satisfied:\n  " + "\n  ".join(violations)
+            assert False, error_msg
+
+        if verbose:
+            print(f"  - Inversion constraints satisfied: ✓")
             print(f"\n✓ {cadence_type.value.upper()} cadence test PASSED")
-            return True
-        else:
-            print(f"\n✗ {cadence_type.value.upper()} cadence test FAILED")
-            return False
 
-    except Exception as e:
-        print(f"\n✗ {cadence_type.value.upper()} cadence test FAILED with exception:")
-        print(f"  {type(e).__name__}: {e}")
-        import traceback
-        traceback.print_exc()
-        return False
+    def test_perfect_cadence(self):
+        """Test Perfect cadence (Ic → V → I) with inversion constraints."""
+        self._validate_cadence(CadenceType.PERFECT)
 
-def main():
-    """Run all tests."""
+    def test_plagal_cadence(self):
+        """Test Plagal cadence (I → IV → I) with inversion constraints."""
+        self._validate_cadence(CadenceType.PLAGAL)
+
+    def test_imperfect_cadence(self):
+        """Test Imperfect cadence (I → IV → V) with inversion constraints."""
+        self._validate_cadence(CadenceType.IMPERFECT)
+
+    def test_interrupted_cadence(self):
+        """Test Interrupted cadence (I → V7 → vi) with inversion constraints."""
+        self._validate_cadence(CadenceType.INTERRUPTED)
+
+    def test_all_cadences_integration(self):
+        """Integration test: all cadence types work correctly."""
+        for cadence_type in CadenceType:
+            self._validate_cadence(cadence_type)
+
+
+def run_all_tests():
+    """Run all tests manually if pytest is not available."""
     print("="*60)
     print("3-Chord Cadence Generator Test Suite")
     print("="*60)
 
-    # Create generator with voice leading enabled (pure 3-chord mode)
-    generator = ChordProgressionGenerator(
-        min_length=3,
-        max_length=3,
-        use_voice_leading=True,
-        use_sevenths=True,
-        use_corpus=False,  # Disable corpus for predictable testing
-        keys=['C'],
-        use_strict_cadence=False  # Pure 3-chord mode
-    )
+    test_class = TestProgressionGeneration()
+    test_class.setup_class()
 
-    # Test each cadence type
-    results = {}
-    for cadence_type in CadenceType:
-        results[cadence_type] = test_cadence_type(cadence_type, generator)
+    tests = [
+        ('test_perfect_cadence', test_class.test_perfect_cadence, CadenceType.PERFECT),
+        ('test_plagal_cadence', test_class.test_plagal_cadence, CadenceType.PLAGAL),
+        ('test_imperfect_cadence', test_class.test_imperfect_cadence, CadenceType.IMPERFECT),
+        ('test_interrupted_cadence', test_class.test_interrupted_cadence, CadenceType.INTERRUPTED),
+    ]
+
+    passed = 0
+    failed = 0
+
+    for test_name, test_func, cadence_type in tests:
+        try:
+            # Run with verbose output for standalone mode
+            test_class._validate_cadence(cadence_type, verbose=True)
+            passed += 1
+        except AssertionError as e:
+            print(f"\n✗ {cadence_type.value.upper()} cadence test FAILED")
+            print(f"  Error: {e}")
+            failed += 1
+        except Exception as e:
+            print(f"\n✗ {cadence_type.value.upper()} cadence test FAILED with exception:")
+            print(f"  {type(e).__name__}: {e}")
+            import traceback
+            traceback.print_exc()
+            failed += 1
 
     # Summary
     print("\n" + "="*60)
     print("TEST SUMMARY")
     print("="*60)
 
-    passed = sum(1 for result in results.values() if result)
-    total = len(results)
-
-    for cadence_type, result in results.items():
-        status = "✓ PASSED" if result else "✗ FAILED"
+    total = len(tests)
+    for test_name, test_func, cadence_type in tests:
+        # Determine status based on whether we passed
+        status = "✓ PASSED" if failed == 0 or test_name not in [
+            name for name, _, _ in tests[:total - passed]
+        ] else "✗ FAILED"
         print(f"  {cadence_type.value:12s}: {status}")
 
     print(f"\nTotal: {passed}/{total} tests passed")
@@ -115,5 +189,11 @@ def main():
         print(f"\n✗ {total - passed} test(s) failed")
         return 1
 
+
 if __name__ == "__main__":
-    sys.exit(main())
+    if HAS_PYTEST:
+        # Run with pytest for better reporting
+        sys.exit(pytest.main([__file__, "-v", "--tb=short"]))
+    else:
+        # Fall back to manual execution
+        sys.exit(run_all_tests())
