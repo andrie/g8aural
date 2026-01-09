@@ -45,14 +45,8 @@ Shiny.addCustomMessageHandler("requestSavedGrade", function(data) {
         console.warn('localStorage unavailable, using default grade 6:', e);
     }
 
-    // Send grade back to Shiny
+    // Send grade back to Shiny (Python will update the slider using Shiny's API)
     Shiny.setInputValue("saved_grade_level", grade, { priority: "event" });
-
-    // Update slider UI to match
-    const slider = document.getElementById("grade_slider");
-    if (slider) {
-        slider.value = grade;
-    }
 });
 
 /**

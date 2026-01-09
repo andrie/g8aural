@@ -211,15 +211,13 @@ def server(input, output, session):
     feedback_type = reactive.Value("info")  # "info", "error", "success"
     disabled_buttons = reactive.Value([])  # Track buttons disabled due to wrong answers
     grade_level = reactive.Value(6)  # Default to Grade 6 (easiest level)
+    grade_restored = reactive.Value(False)  # Track whether grade restoration from localStorage is complete
 
-    # Initialize: Request saved grade from localStorage and fetch first cadence
+    # Initialize: Request saved grade from localStorage
     @reactive.Effect
     async def _():
         # Request saved grade from localStorage
         await session.send_custom_message("requestSavedGrade", {})
-
-        if game_state() == "initial":
-            await fetch_new_cadence()
 
     # Handle saved grade level restoration from localStorage
     @reactive.effect
@@ -233,17 +231,38 @@ def server(input, output, session):
             config = GENERATOR_CONFIG[saved_grade]
             generator = ChordProgressionGenerator(**config)
 
+            # Update slider to reflect saved grade (must use Shiny's API)
+            ui.update_slider("grade_slider", value=saved_grade)
+
             # Update UI to reflect saved grade
             await session.send_custom_message("updateGradeUI", {
                 "grade": saved_grade,
                 "availableCadences": [ct.value for ct in CADENCE_TYPES_BY_GRADE[saved_grade]]
             })
 
+            # Generate first cadence after restoring grade
+            if game_state() == "initial":
+                await fetch_new_cadence()
+
+        # Always mark grade restoration as complete (even if no valid saved grade)
+        # This allows the slider to start working after initialization
+        grade_restored.set(True)
+
     # Handle grade level changes
     @reactive.Effect
     @reactive.event(input.grade_slider)
     async def _():
+        # Don't process slider changes until grade restoration is complete
+        # This prevents the slider's initial value (6) from overwriting the restored grade
+        if not grade_restored():
+            return
+
         new_grade = int(input.grade_slider())
+
+        # Only process if grade actually changed (avoid duplicate updates)
+        if new_grade == grade_level():
+            return
+
         grade_level.set(new_grade)
 
         # Save to localStorage

@@ -91,30 +91,12 @@ function renderNotation(progression, noteNames, chordSymbols, cadenceType, key) 
                 duration: "w" // Whole note
             });
 
-            // Visual distinction: lead-in chords vs final cadence
-            const isCadenceChord = index >= chordCount - 3;
-            const isLeadInChord = !isCadenceChord && chordCount > 3;
-
-            if (isCadenceChord) {
-                // Highlight final three chords (the cadence) in blue
-                noteStrings.forEach((_, i) => {
-                    staveNote.setKeyStyle(i, { fillStyle: "blue", strokeStyle: "blue" });
-                });
-            } else if (isLeadInChord) {
-                // Gray out lead-in chords for visual contrast
-                noteStrings.forEach((_, i) => {
-                    staveNote.setKeyStyle(i, { fillStyle: "#666", strokeStyle: "#666" });
-                });
-            }
-
-            // Add chord symbol annotation with matching color
+            // Add chord symbol annotation
             if (chordSymbols && chordSymbols[index]) {
-                const annotationColor = isCadenceChord ? "blue" : (isLeadInChord ? "#666" : "black");
                 staveNote.addModifier(
                     new VF.Annotation(chordSymbols[index])
                         .setFont("Arial", 12, "bold")
-                        .setVerticalJustification(VF.Annotation.VerticalJustify.TOP)
-                        .setColor(annotationColor),
+                        .setVerticalJustification(VF.Annotation.VerticalJustify.TOP),
                     0
                 );
             }
