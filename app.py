@@ -245,25 +245,19 @@ def server(input, output, session):
                 "nextVisible": False
             })
 
-    @reactive.Effect
-    @reactive.event(input.perfect_btn)
-    async def _():
-        await handle_guess("perfect", "perfect_btn")
+    # Factory function to create button event handlers
+    def create_answer_handler(cadence_type: str, button_id: str):
+        @reactive.Effect
+        @reactive.event(getattr(input, button_id))
+        async def _():
+            await handle_guess(cadence_type, button_id)
+        return _
 
-    @reactive.Effect
-    @reactive.event(input.plagal_btn)
-    async def _():
-        await handle_guess("plagal", "plagal_btn")
-
-    @reactive.Effect
-    @reactive.event(input.imperfect_btn)
-    async def _():
-        await handle_guess("imperfect", "imperfect_btn")
-
-    @reactive.Effect
-    @reactive.event(input.interrupted_btn)
-    async def _():
-        await handle_guess("interrupted", "interrupted_btn")
+    # Register answer button handlers using factory
+    _perfect_handler = create_answer_handler("perfect", "perfect_btn")
+    _plagal_handler = create_answer_handler("plagal", "plagal_btn")
+    _imperfect_handler = create_answer_handler("imperfect", "imperfect_btn")
+    _interrupted_handler = create_answer_handler("interrupted", "interrupted_btn")
 
     # Hint button handler
     @reactive.Effect
