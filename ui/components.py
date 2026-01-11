@@ -137,3 +137,71 @@ def create_notation_section():
         class_="notation-section",
         style="display: none;"
     )
+
+
+# ========================================
+# Voice Singing Tab Components
+# ========================================
+
+def create_voice_control_section():
+    """Create the control section for voice singing tab."""
+    return ui.div(
+        ui.input_action_button(
+            "voice_start_btn",
+            "Start Task",
+            class_="btn-primary btn-lg"
+        ),
+        ui.input_action_button(
+            "voice_try_again_btn",
+            "Try Again",
+            class_="btn-warning btn-lg",
+            style="margin-left: 10px; display: none;"
+        ),
+        class_="control-section"
+    )
+
+
+def create_voice_instructions():
+    """Create instructions section for voice singing task."""
+    return ui.div(
+        ui.h3("Instructions"),
+        ui.tags.ol(
+            ui.tags.li("Click 'Start Task' to hear a two-part melody"),
+            ui.tags.li("Listen to both voices (soprano is higher, bass is lower)"),
+            ui.tags.li("Sing the bass (lower) voice while recording"),
+            ui.tags.li("Receive feedback on pitch accuracy")
+        ),
+        class_="voice-instructions"
+    )
+
+
+def create_voice_recording_indicator():
+    """Create recording status indicator."""
+    return ui.div(
+        ui.div(
+            ui.span("", class_="recording-dot"),
+            ui.span("Recording...", style="margin-left: 8px;"),
+            id="recording-indicator",
+            class_="recording-indicator",
+            style="display: none;"
+        ),
+        class_="recording-section"
+    )
+
+
+def create_voice_feedback_section():
+    """Create feedback section for voice singing results."""
+    return ui.div(
+        ui.output_ui("voice_feedback_message"),
+        ui.div(id="voice-pitch-plot", style="margin-top: 20px;"),
+        class_="feedback-section"
+    )
+
+
+def create_voice_notation_section():
+    """Create notation display section for voice melodies."""
+    return ui.div(
+        ui.div(id="voice-notation-container"),
+        class_="notation-section",
+        style="display: none;"
+    )

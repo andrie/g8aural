@@ -98,3 +98,42 @@ class GradeState:
             level=reactive.Value(default_level),
             restored=reactive.Value(False)
         )
+
+
+@dataclass
+class VoiceState:
+    """Groups voice singing tab state."""
+
+    soprano_melody: reactive.Value  # [(midi, start, duration), ...]
+    bass_melody: reactive.Value     # [(midi, start, duration), ...]
+    target_key: reactive.Value      # 'C', 'G', 'd', etc.
+    recorded_pitch: reactive.Value  # [{time: float, freq: float|null}, ...]
+    grading_result: reactive.Value  # {mae_cents: float, detected_voice: str, feedback: str}
+    is_recording: reactive.Value    # Recording status
+
+    @staticmethod
+    def create():
+        """Factory function to create initialized state."""
+        return VoiceState(
+            soprano_melody=reactive.Value(None),
+            bass_melody=reactive.Value(None),
+            target_key=reactive.Value(None),
+            recorded_pitch=reactive.Value(None),
+            grading_result=reactive.Value(None),
+            is_recording=reactive.Value(False)
+        )
+
+    def set_melodies(self, soprano, bass, key):
+        """Atomic update of melody data."""
+        self.soprano_melody.set(soprano)
+        self.bass_melody.set(bass)
+        self.target_key.set(key)
+
+    def clear(self):
+        """Reset all to None/False."""
+        self.soprano_melody.set(None)
+        self.bass_melody.set(None)
+        self.target_key.set(None)
+        self.recorded_pitch.set(None)
+        self.grading_result.set(None)
+        self.is_recording.set(False)

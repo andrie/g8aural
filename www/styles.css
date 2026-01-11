@@ -392,3 +392,54 @@ body {
         overflow-x: scroll;
     }
 }
+
+/* Voice Singing Tab Styles */
+.voice-instructions {
+    margin: 20px 0;
+    padding: 15px;
+    background-color: #f8f9fa;
+    border-left: 4px solid #007bff;
+    border-radius: 4px;
+}
+
+.voice-instructions h3 {
+    margin-top: 0;
+    color: #007bff;
+}
+
+.recording-indicator {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    margin: 20px 0;
+    padding: 15px;
+    background-color: #fff3cd;
+    border-radius: 8px;
+    font-weight: bold;
+    color: #856404;
+}
+
+.recording-dot {
+    width: 12px;
+    height: 12px;
+    background-color: #dc3545;
+    border-radius: 50%;
+    display: inline-block;
+    animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7);
+    }
+    50% {
+        box-shadow: 0 0 0 10px rgba(220, 53, 69, 0);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(220, 53, 69, 0);
+    }
+}
+
+.recording-section {
+    margin: 20px 0;
+}

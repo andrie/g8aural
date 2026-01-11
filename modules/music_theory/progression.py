@@ -6,7 +6,7 @@ combined with Markov chain models based on Bach chorale patterns.
 """
 import logging
 import random
-from typing import List, Optional
+from typing import List, Optional, Dict, Tuple
 from music21 import roman
 
 from .cadences import CadenceType, CadencePattern
@@ -661,3 +661,71 @@ class ChordProgressionGenerator:
                 note_names = [p.nameWithOctave for p in chord.pitches]
                 result.append(note_names)
             return result
+
+    def extract_voices(self, progression: List[roman.RomanNumeral],
+                      voices: Optional[List[str]] = None,
+                      note_duration: float = 1.0) -> Dict[str, List[Tuple[int, float, float]]]:
+        """
+        Extract individual melodic voices from a 4-voice SATB progression.
+
+        Args:
+            progression: List of music21 RomanNumeral objects (voiced progression)
+            voices: List of voice names to extract (default: ['soprano', 'bass'])
+                    Options: 'soprano' (top), 'alto', 'tenor', 'bass' (bottom)
+            note_duration: Duration of each note in seconds (default: 1.0)
+
+        Returns:
+            Dictionary mapping voice names to melody lists.
+            Each melody is a list of (midi_note, start_time, duration) tuples.
+
+        Examples:
+            >>> generator = ChordProgressionGenerator()
+            >>> progression = generator.generate_progression(CadenceType.PERFECT)
+            >>> melodies = generator.extract_voices(progression, voices=['soprano', 'bass'])
+            >>> 'soprano' in melodies and 'bass' in melodies
+            True
+            >>> len(melodies['soprano']) == len(progression)
+            True
+        """
+        if voices is None:
+            voices = ['soprano', 'bass']
+
+        # Get voiced progression (4-voice SATB)
+        voiced_midi = self.progression_to_midi(progression)
+
+        # Voice index mapping (SATB order: bass=0, tenor=1, alto=2, soprano=3)
+        voice_indices = {
+            'bass': 0,      # Lowest voice
+            'tenor': 1,
+            'alto': 2,
+            'soprano': 3    # Highest voice
+        }
+
+        # Extract melodies
+        melodies = {}
+        for voice_name in voices:
+            if voice_name not in voice_indices:
+                logger.warning(f"Unknown voice name: {voice_name}. Skipping.")
+                continue
+
+            voice_idx = voice_indices[voice_name]
+            melody = []
+
+            for i, chord_voicing in enumerate(voiced_midi):
+                if voice_idx >= len(chord_voicing):
+                    logger.warning(
+                        f"Voice index {voice_idx} out of range for chord {i} "
+                        f"(has {len(chord_voicing)} voices). Skipping."
+                    )
+                    continue
+
+                # Extract the MIDI note for this voice
+                midi_note = chord_voicing[voice_idx]
+                start_time = i * note_duration
+                duration = note_duration
+
+                melody.append((midi_note, start_time, duration))
+
+            melodies[voice_name] = melody
+
+        return melodies
