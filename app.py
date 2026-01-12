@@ -6,7 +6,7 @@ import random
 from pathlib import Path
 from modules.music_theory.cadences import CadenceType
 from modules.music_theory.progression import ChordProgressionGenerator
-from config.app_config import KEYS_BY_GRADE, CADENCE_TYPES_BY_GRADE, GENERATOR_CONFIG
+from config.app_config import KEYS_BY_GRADE, CADENCE_TYPES_BY_GRADE, GENERATOR_CONFIG, VOICE_CONFIG_BY_GRADE
 from ui.components import (
     create_header,
     create_grade_selection,
@@ -308,9 +308,26 @@ def server(input, output, session):
         ChordProgressionGenerator(**GENERATOR_CONFIG[6])
     )
 
-    # Separate generator for voice singing (always uses Grade 8 with 4-voice SATB)
+    # Helper function to create voice generator based on grade level
+    def create_voice_generator(grade):
+        """Create voice generator based on grade level."""
+        config = VOICE_CONFIG_BY_GRADE.get(grade, VOICE_CONFIG_BY_GRADE[8])
+
+        return ChordProgressionGenerator(
+            min_length=config['min_length'],
+            max_length=config['max_length'],
+            use_voice_leading=config['use_voice_leading'],
+            use_sevenths=config['use_sevenths'],
+            use_corpus=config['use_corpus'],
+            corpus_temperature=config['corpus_temperature'],
+            keys=config['keys'],
+            use_strict_cadence=config['use_strict_cadence']
+        )
+
+    # Separate generator for voice singing (reactive to grade changes)
+    # Initialize with Grade 8 (default), will be updated by reactive effect
     voice_generator = reactive.Value(
-        ChordProgressionGenerator(**GENERATOR_CONFIG[8])
+        create_voice_generator(8)
     )
 
     # Initialize cadence tab server logic and get fetch_new_cadence function
@@ -330,11 +347,12 @@ def server(input, output, session):
     @reactive.event(input.saved_grade_level)
     async def _():
         saved_grade = input.saved_grade_level()
-        if saved_grade and saved_grade in [6, 7, 8]:
+        if saved_grade and saved_grade in [5, 6, 7, 8]:
             grade_state.level.set(saved_grade)
-            # Reinitialize generator with saved grade
-            config = GENERATOR_CONFIG[saved_grade]
-            generator.set(ChordProgressionGenerator(**config))
+            # Reinitialize cadence generator (only for grades 6-8)
+            if saved_grade >= 6:
+                config = GENERATOR_CONFIG[saved_grade]
+                generator.set(ChordProgressionGenerator(**config))
 
             # Update slider to reflect saved grade (must use Shiny's API)
             ui.update_slider("grade_slider", value=saved_grade)
@@ -375,70 +393,91 @@ def server(input, output, session):
             "grade": new_grade
         })
 
-        # Reinitialize generator with new config
-        config = GENERATOR_CONFIG[new_grade]
-        generator.set(ChordProgressionGenerator(**config))
+        # Reinitialize cadence generator (only for grades 6-8)
+        if new_grade >= 6:
+            config = GENERATOR_CONFIG[new_grade]
+            generator.set(ChordProgressionGenerator(**config))
 
-        # Update button visibility
-        await session.send_custom_message("updateGradeUI", {
-            "grade": new_grade,
-            "availableCadences": [ct.value for ct in CADENCE_TYPES_BY_GRADE[new_grade]]
-        })
+            # Update button visibility for cadence tab
+            await session.send_custom_message("updateGradeUI", {
+                "grade": new_grade,
+                "availableCadences": [ct.value for ct in CADENCE_TYPES_BY_GRADE[new_grade]]
+            })
 
         # Show toast notification
+        if new_grade == 5:
+            toast_msg = f"Grade changed to {new_grade}. Try the Voice Singing tab!"
+        else:
+            toast_msg = f"Grade changed to {new_grade}. Click 'Next Cadence' to start."
+
         await session.send_custom_message("showToast", {
-            "message": f"Grade changed to {new_grade}. Click 'Next Cadence' to start."
+            "message": toast_msg
         })
+
+    # Reactive effect: Update voice generator when grade changes
+    @reactive.Effect
+    def _():
+        current_grade = grade_state.level()
+        voice_generator.set(create_voice_generator(current_grade))
+        print(f"[Voice Tab] Voice generator updated to Grade {current_grade}")
 
     # ========================================
     # Voice Singing Tab Handlers
     # ========================================
 
-    # Handle "Try Again" button - reset state and generate new melody
+    # Handle "Try Again" button - replay the same melody
     @reactive.Effect
     @reactive.event(input.voice_try_again_btn)
     async def _():
-        # Clear previous state
-        voice_state.clear()
+        # Clear only recording/grading state, keep the melodies
+        voice_state.recorded_pitch.set(None)
+        voice_state.grading_result.set(None)
+        voice_state.is_recording.set(False)
 
         # Hide plot and try again button
         await session.send_custom_message("clearVoicePlot", {})
 
-        # Generate new melody (same as Start Task)
-        await generate_voice_melody()
+        # Replay the same melody
+        await replay_voice_melody()
 
-    # Helper function to generate and play melody
-    async def generate_voice_melody():
-        """Generate melody and start playback."""
+    # Helper function to replay the current melody
+    async def replay_voice_melody():
+        """Replay the current melody without generating a new one."""
         try:
-            # Generate a random cadence type using voice_generator (Grade 8 with 4-voice SATB)
-            gen = voice_generator()
-            cadence_type = random.choice(list(CadenceType))
+            # Get current grade and stored melodies
+            current_grade = grade_state.level()
+            config = VOICE_CONFIG_BY_GRADE.get(current_grade, VOICE_CONFIG_BY_GRADE[8])
+            target_voice_name = voice_state.target_voice()
 
-            # Generate progression
-            progression = gen.generate_progression(cadence_type)
+            # Get stored melodies
+            soprano_melody = voice_state.soprano_melody()
+            bass_melody = voice_state.bass_melody()
 
-            # Extract voices
-            melodies = gen.extract_voices(progression, voices=['soprano', 'bass'])
-            soprano_melody = melodies['soprano']
-            bass_melody = melodies['bass']
+            if not soprano_melody and not bass_melody:
+                print("[Voice Tab] No melody to replay - generating new one")
+                await generate_voice_melody()
+                return
 
-            # Get the key
-            current_key = progression[0].key.name if progression else 'C'
+            # Reconstruct melodies dict based on grade
+            voice_parts = config['voice_parts']
+            melodies = {}
+            if 'soprano' in voice_parts and soprano_melody:
+                melodies['soprano'] = soprano_melody
+            if 'bass' in voice_parts and bass_melody:
+                melodies['bass'] = bass_melody
 
-            # Store in reactive state
-            voice_state.set_melodies(soprano_melody, bass_melody, current_key)
+            # Get key from stored state
+            current_key = voice_state.target_key()
 
-            # Debug: Print melody info
-            print(f"Generated melodies for {cadence_type.value} cadence in {current_key}")
-            print(f"Soprano: {len(soprano_melody)} notes - {soprano_melody}")
-            print(f"Bass: {len(bass_melody)} notes - {bass_melody}")
+            print(f"[Voice Tab] Grade {current_grade}: Replaying {len(voice_parts)}-voice melody")
+            print(f"  Target voice: {target_voice_name}")
 
             # Send to JavaScript for playback
             await session.send_custom_message("playVoiceMelody", {
-                "soprano": soprano_melody,
-                "bass": bass_melody,
-                "key": current_key
+                "melodies": melodies,
+                "targetVoice": target_voice_name,
+                "key": current_key,
+                "grade": current_grade
             })
 
             # Start recording (will be triggered by JavaScript)
@@ -450,7 +489,95 @@ def server(input, output, session):
             })
 
         except Exception as e:
-            print(f"Error generating voice melody: {e}")
+            print(f"[Voice Tab] Error replaying voice melody: {e}")
+            import traceback
+            traceback.print_exc()
+
+    # Helper function to generate and play melody
+    async def generate_voice_melody():
+        """Generate grade-appropriate melody and start playback."""
+        try:
+            # Get current grade and config
+            current_grade = grade_state.level()
+            config = VOICE_CONFIG_BY_GRADE.get(current_grade, VOICE_CONFIG_BY_GRADE[8])
+            gen = voice_generator()
+
+            # Generate progression
+            cadence_type = random.choice(list(CadenceType))
+            progression = gen.generate_progression(cadence_type)
+
+            # Extract voices based on grade configuration
+            voice_parts = config['voice_parts']
+            melodies = gen.extract_voices(progression, voices=voice_parts)
+
+            # Transpose melodies to comfortable singing range for grades where user sings soprano
+            # Grade 5: User sings soprano (single melody)
+            # Grade 6: User sings soprano (upper part of 2-voice)
+            # Default soprano range: G4-D5 (MIDI 67-74, 392-587 Hz) - too high for most!
+            # Transpose down 12 semitones to G3-D4 (MIDI 55-62, 196-294 Hz) - comfortable tenor/alto range
+            if current_grade in [5, 6]:
+                for voice_name in melodies:
+                    transposed_melody = []
+                    for midi_note, start_time, duration in melodies[voice_name]:
+                        transposed_melody.append((midi_note - 12, start_time, duration))
+                    melodies[voice_name] = transposed_melody
+                print(f"  Transposed all voices down 1 octave for Grade {current_grade}")
+
+            # Get target voice for grading
+            target_voice = config['target_voice']
+            if target_voice is None:
+                # Grade 5: single melody, user sings the only voice
+                target_voice = 'soprano'
+
+            # Get key
+            current_key = progression[0].key.name if progression else 'C'
+
+            # Debug logging
+            print(f"[Voice Tab] Grade {current_grade}: Generated {len(voice_parts)}-voice melody")
+            print(f"  Cadence: {cadence_type.value} in {current_key}")
+            print(f"  Voice parts: {voice_parts}")
+            print(f"  Target voice (user sings): {target_voice}")
+            for voice_name in voice_parts:
+                melody = melodies[voice_name]
+                print(f"  {voice_name.capitalize()}: {len(melody)} notes")
+
+            # Store in state (handle Grade 5 single melody)
+            if current_grade == 5:
+                # Grade 5: only soprano melody
+                voice_state.set_melodies(
+                    soprano=melodies['soprano'],
+                    bass=None,  # No bass in Grade 5
+                    key=current_key
+                )
+            else:
+                # Grades 6-8: multiple voices
+                voice_state.set_melodies(
+                    soprano=melodies.get('soprano', None),
+                    bass=melodies.get('bass', None),
+                    key=current_key
+                )
+
+            # Store target voice for grading
+            voice_state.target_voice.set(target_voice)
+
+            # Send to JavaScript for playback
+            await session.send_custom_message("playVoiceMelody", {
+                "melodies": melodies,
+                "targetVoice": target_voice,
+                "key": current_key,
+                "grade": current_grade
+            })
+
+            # Start recording (will be triggered by JavaScript)
+            voice_state.is_recording.set(True)
+
+            # Hide try again button during recording
+            await session.send_custom_message("updateVoiceButtons", {
+                "tryAgainVisible": False
+            })
+
+        except Exception as e:
+            print(f"[Voice Tab] Error generating voice melody: {e}")
 
     # Generate melody and start playback when "Start Task" is clicked
     @reactive.Effect
@@ -507,6 +634,8 @@ def server(input, output, session):
                 if freq is not None and freq > 0:
                     recorded_frequencies.append(freq)
 
+            print(f"Valid pitch samples: {len(recorded_frequencies)} / {len(recorded_data)} ({len(recorded_frequencies)/len(recorded_data)*100:.1f}%)")
+
             if len(recorded_frequencies) < 10:
                 print("Not enough valid pitch data for grading")
                 voice_state.grading_result.set({
@@ -525,63 +654,97 @@ def server(input, output, session):
             # Apply median filter to remove octave jumps
             recorded_midi_filtered = apply_median_filter(recorded_midi, kernel_size=5)
 
-            # Get target melodies
-            soprano_melody = voice_state.soprano_melody()
-            bass_melody = voice_state.bass_melody()
+            # Get target melody based on grade-specific target voice
+            target_melody = voice_state.get_target_melody()
+            target_voice_name = voice_state.target_voice()
+            grade = grade_state.level()
 
-            if not soprano_melody or not bass_melody:
-                print("No target melodies available")
+            if target_melody is None:
+                print(f"No target melody for voice: {target_voice_name}")
                 return
 
-            # Convert target melodies to pitch contours
-            soprano_contour = melody_to_pitch_contour(soprano_melody, sample_rate=20)
-            bass_contour = melody_to_pitch_contour(bass_melody, sample_rate=20)
+            print(f"[Voice Grading] Grade {grade}: Grading against {target_voice_name} voice")
+            print(f"  Target melody: {len(target_melody)} notes")
+
+            # Use the actual recording sample rate for target generation
+            # This ensures time alignment between target and recording
+            recording_sample_rate = pitch_data.get('sampleRate', 20)
+            print(f"  Using sample rate: {recording_sample_rate:.1f} Hz (from recording)")
+
+            # Convert target melody to pitch contour at recording sample rate
+            target_contour = melody_to_pitch_contour(target_melody, sample_rate=recording_sample_rate)
 
             # Convert to MIDI
-            soprano_midi = hz_to_midi(soprano_contour[soprano_contour > 0])
-            bass_midi = hz_to_midi(bass_contour[bass_contour > 0])
+            target_midi = hz_to_midi(target_contour[target_contour > 0])
 
-            # Detect which voice was sung
-            detected_voice, voice_distance = detect_voice_error(
-                recorded_midi_filtered,
-                soprano_midi,
-                bass_midi
-            )
+            # For grades with multiple voices, detect which voice was sung
+            if grade > 5:
+                # Get both melodies for comparison
+                soprano_melody = voice_state.soprano_melody()
+                bass_melody = voice_state.bass_melody()
 
-            print(f"Detected voice: {detected_voice} (distance: {voice_distance:.2f} semitones)")
+                if soprano_melody and bass_melody:
+                    soprano_contour = melody_to_pitch_contour(soprano_melody, sample_rate=recording_sample_rate)
+                    bass_contour = melody_to_pitch_contour(bass_melody, sample_rate=recording_sample_rate)
+                    soprano_midi = hz_to_midi(soprano_contour[soprano_contour > 0])
+                    bass_midi = hz_to_midi(bass_contour[bass_contour > 0])
 
-            # Select the correct target
-            if detected_voice == "soprano":
-                target_midi = soprano_midi
-                feedback_prefix = "⚠️ You sang the soprano (upper) voice instead of the bass (lower) voice. "
+                    detected_voice, voice_distance = detect_voice_error(
+                        recorded_midi_filtered,
+                        soprano_midi,
+                        bass_midi
+                    )
+                    print(f"Detected voice: {detected_voice} (distance: {voice_distance:.2f} semitones)")
+
+                    # Check if correct voice was sung
+                    if detected_voice == target_voice_name:
+                        feedback_prefix = f"✓ You sang the {target_voice_name} voice. "
+                    else:
+                        other_voice = "soprano" if target_voice_name == "bass" else "bass"
+                        feedback_prefix = f"⚠️ You sang the {detected_voice} voice instead of the {target_voice_name} voice. "
+                else:
+                    feedback_prefix = f"✓ Grading against {target_voice_name} voice. "
             else:
-                target_midi = bass_midi
-                feedback_prefix = "✓ You sang the bass voice. "
+                # Grade 5: single melody, no voice detection needed
+                feedback_prefix = "✓ "
+                detected_voice = target_voice_name
 
-            # Truncate to same length for simplicity
-            min_len = min(len(recorded_midi_filtered), len(target_midi))
-            recorded_midi_truncated = recorded_midi_filtered[:min_len]
-            target_midi_truncated = target_midi[:min_len]
+            # Don't truncate! DTW can handle different length sequences
+            # This allows users to sing at their own pace
+            print(f"  Recorded: {len(recorded_midi_filtered)} samples")
+            print(f"  Target: {len(target_midi)} samples")
 
             # Find the best octave shift (-1, 0, or +1 octaves)
             best_octave_shift, shift_distance = find_best_octave_shift(
-                recorded_midi_truncated,
-                target_midi_truncated
+                recorded_midi_filtered,
+                target_midi
             )
 
             print(f"Best octave shift: {best_octave_shift} semitones ({best_octave_shift // 12:+d} octave)")
 
             # Align recorded to target using DTW with octave shift
-            shifted_recorded = recorded_midi_truncated + best_octave_shift
+            # DTW handles different sequence lengths naturally
+            shifted_recorded = recorded_midi_filtered + best_octave_shift
             aligned_path, dtw_distance = align_performance(
                 shifted_recorded,
-                target_midi_truncated
+                target_midi
             )
+
+            # Analyze DTW alignment coverage
+            recorded_indices_used = set(i for i, j in aligned_path)
+            target_indices_used = set(j for i, j in aligned_path)
+            coverage_recorded = len(recorded_indices_used) / len(recorded_midi_filtered) * 100
+            coverage_target = len(target_indices_used) / len(target_midi) * 100
+
+            print(f"DTW Alignment:")
+            print(f"  Path length: {len(aligned_path)} pairs")
+            print(f"  Recorded coverage: {len(recorded_indices_used)}/{len(recorded_midi_filtered)} samples ({coverage_recorded:.1f}%)")
+            print(f"  Target coverage: {len(target_indices_used)}/{len(target_midi)} samples ({coverage_target:.1f}%)")
 
             # Grade performance with octave shift
             mae_cents = grade_performance(
-                recorded_midi_truncated,
-                target_midi_truncated,
+                recorded_midi_filtered,
+                target_midi,
                 aligned_path,
                 octave_shift=best_octave_shift
             )
@@ -622,15 +785,15 @@ def server(input, output, session):
                 from modules.music_theory.voice_analysis import create_pitch_plot
 
                 # Apply octave shift to recorded data for visualization
-                shifted_recorded_for_plot = recorded_midi_truncated + best_octave_shift
+                shifted_recorded_for_plot = recorded_midi_filtered + best_octave_shift
 
-                # Create timestamps for target data
-                target_timestamps = np.linspace(0, len(target_midi_truncated) / 20, len(target_midi_truncated))
+                # Create timestamps for target data using actual recording sample rate
+                target_timestamps = np.linspace(0, len(target_midi) / recording_sample_rate, len(target_midi))
 
-                # Create the plot with shifted data
+                # Create the plot with shifted data (full length, not truncated)
                 plot_base64 = create_pitch_plot(
                     shifted_recorded_for_plot,
-                    target_midi_truncated,
+                    target_midi,
                     target_timestamps
                 )
 

@@ -146,68 +146,140 @@ function stopVoicePlayback() {
  */
 if (typeof window.Shiny !== 'undefined') {
     window.Shiny.addCustomMessageHandler("playVoiceMelody", async function(message) {
-    const { soprano, bass, key } = message;
+        // Support both old format (soprano, bass, key) and new format (melodies, grade, key)
+        let soprano, bass, key, grade;
 
-    console.log("Received voice melody:", {
-        sopranoNotes: soprano.length,
-        bassNotes: bass.length,
-        key: key,
-        soprano: soprano,
-        bass: bass
-    });
-
-    try {
-        console.log("Starting voice melody playback...");
-
-        // Check if melodies are empty
-        if (soprano.length === 0 && bass.length === 0) {
-            console.error("Both melodies are empty!");
-            return;
+        if (message.melodies) {
+            // New format (Phase 1+)
+            soprano = message.melodies.soprano || [];
+            bass = message.melodies.bass || [];
+            key = message.key;
+            grade = message.grade || 8;  // Default to Grade 8
+        } else {
+            // Old format (backward compatibility)
+            soprano = message.soprano || [];
+            bass = message.bass || [];
+            key = message.key;
+            grade = 8;  // Assume Grade 8 for old format
         }
-        // Play melody first (user listens)
-        const duration = await playVoiceMelody(soprano, bass);
 
-        // After melody ends, start recording for user to sing back
-        setTimeout(async () => {
-            if (window.voiceMicrophone) {
-                await window.voiceMicrophone.startRecording();
+        console.log("Received voice melody:", {
+            grade: grade,
+            sopranoNotes: soprano.length,
+            bassNotes: bass.length,
+            key: key
+        });
 
-                // Show recording indicator
-                const indicator = document.getElementById('recording-indicator');
-                if (indicator) {
-                    indicator.style.display = 'flex';
-                }
+        try {
+            console.log(`Starting Grade ${grade} voice melody playback...`);
 
-                // Stop recording after duration + 2 seconds
+            // Check if melodies are empty
+            if (soprano.length === 0 && bass.length === 0) {
+                console.error("Both melodies are empty!");
+                return;
+            }
+
+            // Grade 5: Play only soprano (centered)
+            if (grade === 5) {
+                console.log("Grade 5: Playing single melody (centered)");
+
+                // Initialize just soprano piano with centered panning
+                await Tone.start();
+                const centerPanner = new Tone.Panner(0).toDestination();  // Pan = 0 (center)
+                const centeredPiano = new Tone.Sampler({
+                    urls: {
+                        "C4": "C4.mp3",
+                        "D#4": "Ds4.mp3",
+                        "F#4": "Fs4.mp3",
+                        "A4": "A4.mp3",
+                    },
+                    baseUrl: "https://tonejs.github.io/audio/salamander/",
+                }).connect(centerPanner);
+                centeredPiano.volume.value = 0;  // Normal volume
+
+                await Tone.loaded();
+
+                // Schedule notes
+                const now = Tone.now();
+                soprano.forEach(([midi, startTime, duration]) => {
+                    const noteName = midiToNoteName(midi);
+                    centeredPiano.triggerAttackRelease(noteName, duration, now + startTime);
+                });
+
+                // Calculate duration
+                const sopranoEnd = soprano.length > 0 ? Math.max(...soprano.map(([m, s, d]) => s + d)) : 0;
+                const totalDuration = sopranoEnd;
+
+                // Send playback complete after melody finishes
                 setTimeout(() => {
-                    if (window.voiceMicrophone) {
-                        window.voiceMicrophone.stopRecording();
+                    voiceIsPlaying = false;
+                    console.log("Grade 5 melody playback complete");
+                    window.Shiny.setInputValue("voice_playback_complete", Math.random(), { priority: "event" });
+                }, (totalDuration + 0.5) * 1000);
 
-                        // Hide recording indicator
+                // Start recording after playback (for Grade 5)
+                setTimeout(async () => {
+                    if (window.voiceMicrophone) {
+                        await window.voiceMicrophone.startRecording();
+
                         const indicator = document.getElementById('recording-indicator');
                         if (indicator) {
-                            indicator.style.display = 'none';
+                            indicator.style.display = 'flex';
                         }
-                    }
-                }, (duration + 2.0) * 1000);
-            }
-        }, duration * 1000);
 
-    } catch (error) {
-        console.error("Error playing voice melody:", error);
-        if (typeof window.Shiny !== 'undefined') {
+                        setTimeout(() => {
+                            if (window.voiceMicrophone) {
+                                window.voiceMicrophone.stopRecording();
+
+                                const indicator = document.getElementById('recording-indicator');
+                                if (indicator) {
+                                    indicator.style.display = 'none';
+                                }
+                            }
+                        }, (totalDuration + 2.0) * 1000);
+                    }
+                }, totalDuration * 1000);
+
+            } else {
+                // Grades 6-8: Play both voices in stereo (existing behavior)
+                const duration = await playVoiceMelody(soprano, bass);
+
+                // After melody ends, start recording (existing behavior)
+                setTimeout(async () => {
+                    if (window.voiceMicrophone) {
+                        await window.voiceMicrophone.startRecording();
+
+                        const indicator = document.getElementById('recording-indicator');
+                        if (indicator) {
+                            indicator.style.display = 'flex';
+                        }
+
+                        setTimeout(() => {
+                            if (window.voiceMicrophone) {
+                                window.voiceMicrophone.stopRecording();
+
+                                const indicator = document.getElementById('recording-indicator');
+                                if (indicator) {
+                                    indicator.style.display = 'none';
+                                }
+                            }
+                        }, (duration + 2.0) * 1000);
+                    }
+                }, duration * 1000);
+            }
+
+        } catch (error) {
+            console.error("Error playing voice melody:", error);
             window.Shiny.setInputValue("voice_playback_error", {
                 message: error.message,
                 timestamp: Date.now()
             }, { priority: "event" });
-        }
 
-        // Hide recording indicator on error
-        const indicator = document.getElementById('recording-indicator');
-        if (indicator) {
-            indicator.style.display = 'none';
+            const indicator = document.getElementById('recording-indicator');
+            if (indicator) {
+                indicator.style.display = 'none';
+            }
         }
-    }
     });
 } else {
     console.error('Shiny not available - voice playback will not work');

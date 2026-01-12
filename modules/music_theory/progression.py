@@ -690,7 +690,7 @@ class ChordProgressionGenerator:
         if voices is None:
             voices = ['soprano', 'bass']
 
-        # Get voiced progression (4-voice SATB)
+        # Get voiced progression (may be 3-voice or 4-voice SATB)
         voiced_midi = self.progression_to_midi(progression)
 
         # Voice index mapping (SATB order: bass=0, tenor=1, alto=2, soprano=3)
@@ -712,15 +712,23 @@ class ChordProgressionGenerator:
             melody = []
 
             for i, chord_voicing in enumerate(voiced_midi):
-                if voice_idx >= len(chord_voicing):
+                # Handle soprano for non-4-voice progressions: use highest note (top voice)
+                if voice_name == 'soprano' and voice_idx >= len(chord_voicing):
+                    # For triads (3 voices) or other non-SATB progressions,
+                    # soprano is the top voice (last element)
+                    actual_idx = len(chord_voicing) - 1
+                else:
+                    actual_idx = voice_idx
+
+                if actual_idx >= len(chord_voicing):
                     logger.warning(
-                        f"Voice index {voice_idx} out of range for chord {i} "
+                        f"Voice index {actual_idx} out of range for chord {i} "
                         f"(has {len(chord_voicing)} voices). Skipping."
                     )
                     continue
 
                 # Extract the MIDI note for this voice
-                midi_note = chord_voicing[voice_idx]
+                midi_note = chord_voicing[actual_idx]
                 start_time = i * note_duration
                 duration = note_duration
 

@@ -58,6 +58,63 @@ GENERATOR_CONFIG = {
     }
 }
 
+# Voice singing configuration by grade (for Voice Singing tab)
+# Defines voice parts, target voice, and generator settings for each grade
+VOICE_CONFIG_BY_GRADE = {
+    5: {
+        'num_voices': 1,        # Single melody
+        'target_voice': None,   # User sings the only voice (soprano)
+        'voice_parts': ['soprano'],
+        'min_length': 4,
+        'max_length': 8,
+        'keys': KEYS_BY_GRADE[6],  # Reuse Grade 6 keys (up to 3♯/♭)
+        'use_voice_leading': False,  # Simple melody, no harmony
+        'use_sevenths': False,
+        'use_corpus': True,
+        'corpus_temperature': 0.7,
+        'use_strict_cadence': False  # Pure 3-chord cadence mode
+    },
+    6: {
+        'num_voices': 2,
+        'target_voice': 'soprano',  # User sings UPPER part
+        'voice_parts': ['soprano', 'bass'],
+        'min_length': 4,
+        'max_length': 6,
+        'keys': KEYS_BY_GRADE[6],
+        'use_voice_leading': True,  # Two-voice harmony
+        'use_sevenths': False,
+        'use_corpus': True,
+        'corpus_temperature': 0.7,
+        'use_strict_cadence': False
+    },
+    7: {
+        'num_voices': 2,
+        'target_voice': 'bass',    # User sings LOWER part
+        'voice_parts': ['soprano', 'bass'],
+        'min_length': 4,
+        'max_length': 6,
+        'keys': KEYS_BY_GRADE[7],
+        'use_voice_leading': True,
+        'use_sevenths': False,
+        'use_corpus': True,
+        'corpus_temperature': 0.7,
+        'use_strict_cadence': False
+    },
+    8: {
+        'num_voices': 3,
+        'target_voice': 'bass',    # User sings LOWEST part
+        'voice_parts': ['soprano', 'alto', 'bass'],
+        'min_length': 4,
+        'max_length': 8,
+        'keys': KEYS_BY_GRADE[8],
+        'use_voice_leading': True,  # Full SATB
+        'use_sevenths': True,   # Grade 8 uses V7
+        'use_corpus': True,
+        'corpus_temperature': 0.8,
+        'use_strict_cadence': True  # Hybrid mode with lead-in
+    }
+}
+
 
 def validate_config():
     """
@@ -91,5 +148,26 @@ def validate_config():
         for key in required_keys:
             if key not in config:
                 raise ValueError(f"Missing '{key}' in grade {grade} generator config")
+
+    # Check all grades have voice config (grades 5-8)
+    for grade in [5, 6, 7, 8]:
+        if grade not in VOICE_CONFIG_BY_GRADE:
+            raise ValueError(f"Missing voice config for grade {grade}")
+
+        voice_config = VOICE_CONFIG_BY_GRADE[grade]
+        required_keys = ['num_voices', 'target_voice', 'voice_parts', 'keys',
+                        'use_voice_leading', 'use_corpus', 'corpus_temperature',
+                        'use_sevenths', 'use_strict_cadence']
+        for key in required_keys:
+            if key not in voice_config:
+                raise ValueError(f"Missing '{key}' in grade {grade} voice config")
+
+        # Validate voice_parts is not empty
+        if len(voice_config['voice_parts']) == 0:
+            raise ValueError(f"Empty voice_parts list for grade {grade}")
+
+        # Validate num_voices matches voice_parts length
+        if voice_config['num_voices'] != len(voice_config['voice_parts']):
+            raise ValueError(f"num_voices ({voice_config['num_voices']}) does not match voice_parts length ({len(voice_config['voice_parts'])}) for grade {grade}")
 
     return True

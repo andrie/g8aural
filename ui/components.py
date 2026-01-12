@@ -21,20 +21,21 @@ def create_grade_selection():
         # Grade Selection Section
         ui.div(
             ui.div(
-                "Current Level: Grade 6",
+                "Current Level: Grade 5",
                 id="grade-label",
                 class_="grade-label"
             ),
             ui.input_slider(
                 "grade_slider",
                 label=None,  # No label (using custom label above)
-                min=6,
+                min=5,
                 max=8,
-                value=6,
+                value=5,
                 step=1,
                 width="300px"
             ),
             ui.div(
+                ui.span("Grade 5"),
                 ui.span("Grade 6"),
                 ui.span("Grade 7"),
                 ui.span("Grade 8"),
