@@ -174,8 +174,8 @@ def detect_voice_error(
     soprano_distance = np.mean(min_octave_distance(recorded_pc, soprano_pc))
     bass_distance = np.mean(min_octave_distance(recorded_pc, bass_pc))
 
-    # Determine which voice is closer (1 semitone margin)
-    if soprano_distance < bass_distance - 1.0:
+    # Determine which voice is closer (no bias)
+    if soprano_distance < bass_distance:
         return "soprano", float(soprano_distance)
     else:
         return "bass", float(bass_distance)

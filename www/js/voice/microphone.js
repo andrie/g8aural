@@ -102,27 +102,20 @@ function calculateRMS(buffer) {
  * Initialize live pitch plot canvas
  */
 function initLivePitchPlot() {
-    livePitchCanvas = document.getElementById('voice-live-pitch-canvas');
+    livePitchCanvas = document.getElementById('live-pitch-canvas');
     if (!livePitchCanvas) {
         console.warn("Live pitch canvas not found");
         return;
     }
 
-    if (livePitchCanvas) {
-        livePitchContext = livePitchCanvas.getContext('2d');
-    }
+    livePitchContext = livePitchCanvas.getContext('2d');
     pitchHistory = [];
 
     // Show canvas and recording indicator
-    if (livePitchCanvas) {
-        livePitchCanvas.style.display = 'block';
-        console.log("Live pitch canvas is now visible");
-    }
-
-    const recordingIndicator = document.getElementById('voice-recording-indicator');
+    livePitchCanvas.style.display = 'block';
+    const recordingIndicator = document.getElementById('recording-indicator');
     if (recordingIndicator) {
-        recordingIndicator.style.display = 'flex';
-        console.log("Recording indicator is now visible");
+        recordingIndicator.style.display = 'block';
     }
 
     console.log("Live pitch plot initialized");
@@ -224,7 +217,7 @@ function clearLivePitchPlot() {
         livePitchCanvas.style.display = 'none';
     }
 
-    const recordingIndicator = document.getElementById('voice-recording-indicator');
+    const recordingIndicator = document.getElementById('recording-indicator');
     if (recordingIndicator) {
         recordingIndicator.style.display = 'none';
     }

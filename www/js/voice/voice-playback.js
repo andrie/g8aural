@@ -270,13 +270,9 @@ if (typeof window.Shiny !== 'undefined') {
                 // Start recording after playback (for Grade 5)
                 setTimeout(async () => {
                     if (window.voiceMicrophone) {
-                        // Initialize microphone early to give browser time to set up
-                        await window.voiceMicrophone.initialize();
-
-                        console.log("Grade 5: Microphone initialized, starting recording...");
                         await window.voiceMicrophone.startRecording();
 
-                        const indicator = document.getElementById('voice-recording-indicator');
+                        const indicator = document.getElementById('recording-indicator');
                         if (indicator) {
                             indicator.style.display = 'flex';
                         }
@@ -285,7 +281,7 @@ if (typeof window.Shiny !== 'undefined') {
                             if (window.voiceMicrophone) {
                                 window.voiceMicrophone.stopRecording();
 
-                                const indicator = document.getElementById('voice-recording-indicator');
+                                const indicator = document.getElementById('recording-indicator');
                                 if (indicator) {
                                     indicator.style.display = 'none';
                                 }
@@ -301,13 +297,9 @@ if (typeof window.Shiny !== 'undefined') {
                 // After melody ends, start recording
                 setTimeout(async () => {
                     if (window.voiceMicrophone) {
-                        // Initialize microphone early to give browser time to set up
-                        await window.voiceMicrophone.initialize();
-
-                        console.log("Microphone initialized, starting recording...");
                         await window.voiceMicrophone.startRecording();
 
-                        const indicator = document.getElementById('voice-recording-indicator');
+                        const indicator = document.getElementById('recording-indicator');
                         if (indicator) {
                             indicator.style.display = 'flex';
                         }
@@ -316,7 +308,7 @@ if (typeof window.Shiny !== 'undefined') {
                             if (window.voiceMicrophone) {
                                 window.voiceMicrophone.stopRecording();
 
-                                const indicator = document.getElementById('voice-recording-indicator');
+                                const indicator = document.getElementById('recording-indicator');
                                 if (indicator) {
                                     indicator.style.display = 'none';
                                 }
@@ -333,7 +325,7 @@ if (typeof window.Shiny !== 'undefined') {
                 timestamp: Date.now()
             }, { priority: "event" });
 
-            const indicator = document.getElementById('voice-recording-indicator');
+            const indicator = document.getElementById('recording-indicator');
             if (indicator) {
                 indicator.style.display = 'none';
             }

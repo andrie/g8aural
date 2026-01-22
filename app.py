@@ -1,124 +1,284 @@
 """
-ABRSM Grade 8 Cadence Training - Shiny for Python Frontend
+Sharp Ear - Shiny for Python Frontend
 """
-from shiny import App, ui, render, reactive
-import random
+from shiny import App, ui, reactive, render
 from pathlib import Path
-from modules.music_theory.cadences import CadenceType
-from modules.music_theory.progression import ChordProgressionGenerator
-from config.app_config import KEYS_BY_GRADE, CADENCE_TYPES_BY_GRADE, GENERATOR_CONFIG, VOICE_CONFIG_BY_GRADE
-from ui.components import (
-    create_header,
-    create_grade_selection,
-    create_control_section,
-    create_answer_section,
-    create_feedback_section,
-    create_next_button_section,
-    create_notation_section,
-    create_voice_control_section,
-    create_voice_instructions,
-    create_voice_recording_indicator,
-    create_voice_feedback_section,
-    create_voice_notation_section
-)
-from state.game_state import ProgressionState, FeedbackState, GameFlowState, GradeState, VoiceState
-from handlers.game_logic import (
+from config.app_config import CADENCE_TYPES_BY_GRADE, GENERATOR_CONFIG, VOICE_CONFIG_BY_GRADE
+from lib.music_theory.progression import ChordProgressionGenerator
+from state.app_state import AppState
+from state.cadence_state import ProgressionState, FeedbackState, GameFlowState
+from state.voice_state import VoiceState
+
+# Server-side handlers - direct imports instead of module imports
+from modules.cadence.handlers import (
     validate_guess,
-    generate_new_cadence_data,
     handle_correct_answer,
     handle_incorrect_answer,
-    initialize_new_cadence
+    initialize_new_cadence,
+    generate_new_cadence_data
+)
+from modules.voice.handlers import (
+    generate_voice_melody,
+    replay_voice_melody
 )
 
+# Define UI directly in app.py
+def app_ui(request):
+    """Main application UI."""
 
-# Tab UI Components
-def create_cadence_tab_ui():
-    """
-    Create UI for cadence identification tab.
+    # Create our own component functions that don't rely on Shiny modules
+    def create_ui_components():
+        """Create all UI components for the application."""
 
-    Returns:
-        List of UI components for cadence identification
-    """
-    return [
-        create_control_section(),
-        create_answer_section(),
-        create_feedback_section(),
-        create_next_button_section(),
-        create_notation_section(),
-    ]
+        # Header
+        header = ui.div(
+            ui.h1("Sharp Ear - Aural Training"),
+            ui.p("Practice identifying cadences and develop your ear for harmony"),
+            class_="header"
+        )
 
+        # Grade selection slider
+        grade_selection = ui.div(
+            ui.div(
+                ui.h3("Select Grade Level", class_="grade-label"),
+                ui.input_slider(
+                    "grade_slider",
+                    None,
+                    min=5,
+                    max=8,
+                    value=6,
+                    step=1,
+                    ticks=True
+                ),
+                ui.div(
+                    ui.span("Grade 5", style="text-align: left;"),
+                    ui.span("Grade 6"),
+                    ui.span("Grade 7"),
+                    ui.span("Grade 8", style="text-align: right;"),
+                    class_="grade-markers"
+                ),
+                class_="form-group shiny-input-container",
+                style="width: 300px; margin: 0 auto;"
+            ),
+            ui.div(
+                ui.tags.button(
+                    ui.tags.i(class_="fa fa-info"),
+                    id="grade-info-button",
+                    class_="info-btn"
+                ),
+                class_="grade-info-container"
+            ),
+            class_="grade-selection"
+        )
 
-def create_voice_singing_tab_ui():
-    """
-    Create UI for voice singing tab.
+        # Cadence identification components
+        cadence_control_section = ui.div(
+            ui.input_action_button(
+                "cadence_play_btn",
+                "Play Cadence",
+                class_="btn-primary btn-lg"
+            ),
+            ui.input_action_button(
+                "cadence_hint_btn",
+                "Show Hint",
+                class_="btn-warning btn-lg",
+                style="margin-left: 10px;"
+            ),
+            class_="control-section"
+        )
 
-    Returns:
-        List of UI components for voice singing
-    """
-    return [
-        create_voice_instructions(),
-        create_voice_control_section(),
-        create_voice_recording_indicator(),
-        create_voice_feedback_section(),
-        create_voice_notation_section(),
-    ]
+        cadence_answer_section = ui.div(
+            ui.h3("Select the cadence type:"),
+            ui.div(
+                ui.input_action_button("cadence_perfect_btn", "Perfect", class_="cadence-btn"),
+                ui.input_action_button("cadence_plagal_btn", "Plagal", class_="cadence-btn"),
+                ui.input_action_button("cadence_imperfect_btn", "Imperfect", class_="cadence-btn"),
+                ui.input_action_button("cadence_interrupted_btn", "Interrupted", class_="cadence-btn"),
+                class_="answer-grid"
+            ),
+            class_="answer-section"
+        )
 
+        cadence_feedback_section = ui.div(
+            ui.output_ui("cadence_feedback_message"),
+            class_="feedback-section"
+        )
 
-# UI Layout with tab structure
-app_ui = ui.page_fluid(
-    # Include custom CSS and JavaScript
-    ui.tags.head(
-        ui.tags.link(rel="stylesheet", href="styles.css"),
-        # Include Tone.js
-        ui.tags.script(src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"),
-        # Include VexFlow
-        ui.tags.script(src="https://cdn.jsdelivr.net/npm/vexflow@4.2.2/build/cjs/vexflow.js"),
-        # Include custom JavaScript
-        ui.tags.script(src="audio.js"),
-        ui.tags.script(src="notation.js"),
-        ui.tags.script(src="grade-ui.js"),
-        # Load microphone.js as ES module (imports Pitchy internally)
-        ui.tags.script(src="microphone.js", type="module"),
-        ui.tags.script(src="voice-playback.js"),
-        ui.tags.script(src="pitch-plot.js"),
-    ),
-    # Header and grade selection (shared across all tabs)
-    create_header(),
-    *create_grade_selection(),  # Unpacks list of components (slider + modal)
-    # Tab navigation
-    ui.navset_tab(
-        ui.nav_panel(
-            "Cadence Identification",
-            *create_cadence_tab_ui()
+        cadence_next_button_section = ui.div(
+            ui.input_action_button(
+                "cadence_next_btn",
+                "Next Cadence",
+                class_="btn-success btn-lg",
+                style="display: none;"
+            ),
+            class_="next-section"
+        )
+
+        cadence_notation_section = ui.div(
+            ui.div(id="cadence-notation-container"),
+            class_="notation-section",
+            style="display: none;"
+        )
+
+        # Voice singing components
+        voice_instructions = ui.div(
+            ui.output_ui("voice_instructions_text"),
+            ui.output_ui("voice_target_indicator"),
+            class_="voice-instructions"
+        )
+
+        voice_control_section = ui.div(
+            ui.input_action_button(
+                "voice_start_btn",
+                "Start Task",
+                class_="btn-primary btn-lg"
+            ),
+            ui.input_action_button(
+                "voice_try_again_btn",
+                "Try Again",
+                class_="btn-warning btn-lg",
+                style="margin-left: 10px; display: none;"
+            ),
+            class_="control-section"
+        )
+
+        voice_recording_indicator = ui.div(
+            ui.div(
+                ui.span("", class_="recording-dot"),
+                ui.span("Recording...", style="margin-left: 8px;"),
+                id="voice-recording-indicator",
+                class_="recording-indicator",
+                style="display: none;"
+            ),
+            ui.tags.canvas(
+                id="voice-live-pitch-canvas",
+                width="600",
+                height="150",
+                style="display: none; border: 1px solid #ccc; background: #f9f9f9; margin-top: 10px; margin: 0 auto;"
+            ),
+            class_="recording-section"
+        )
+
+        voice_feedback_section = ui.div(
+            ui.output_ui("voice_feedback_message"),
+            ui.div(id="voice-pitch-plot", style="margin-top: 20px;"),
+            class_="feedback-section"
+        )
+
+        voice_notation_section = ui.div(
+            ui.div(id="voice-notation-container"),
+            class_="notation-section",
+            style="display: none;"
+        )
+
+        return {
+            "header": header,
+            "grade_selection": grade_selection,
+            "cadence_control_section": cadence_control_section,
+            "cadence_answer_section": cadence_answer_section,
+            "cadence_feedback_section": cadence_feedback_section,
+            "cadence_next_button_section": cadence_next_button_section,
+            "cadence_notation_section": cadence_notation_section,
+            "voice_instructions": voice_instructions,
+            "voice_control_section": voice_control_section,
+            "voice_recording_indicator": voice_recording_indicator,
+            "voice_feedback_section": voice_feedback_section,
+            "voice_notation_section": voice_notation_section
+        }
+
+    # Get all UI components
+    components = create_ui_components()
+
+    # Build the final UI
+    return ui.page_fluid(
+        # Include custom CSS and JavaScript
+        ui.tags.head(
+            ui.tags.link(rel="stylesheet", href="styles.css"),
+            # Include Font Awesome for icons
+            ui.tags.link(rel="stylesheet", href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css"),
+            # Include Tone.js
+            ui.tags.script(src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"),
+            # Include VexFlow
+            ui.tags.script(src="https://cdn.jsdelivr.net/npm/vexflow@4.2.2/build/cjs/vexflow.js"),
+            # Include custom JavaScript
+            ui.tags.script(src="audio.js"),
+            ui.tags.script(src="notation.js"),
+            ui.tags.script(src="grade-ui.js"),
+            # Load microphone.js as ES module (imports Pitchy internally)
+            ui.tags.script(src="microphone.js", type="module"),
+            ui.tags.script(src="voice-playback.js"),
+            ui.tags.script(src="pitch-plot.js"),
         ),
-        ui.nav_panel(
-            "Voice Singing",
-            *create_voice_singing_tab_ui()
+        # Header and grade selection (shared across all tabs)
+        components["header"],
+        components["grade_selection"],
+        # Tab navigation
+        ui.navset_tab(
+            ui.nav_panel(
+                "Cadence Identification",
+                # Build cadence UI directly from components
+                ui.div(
+                    components["cadence_control_section"],
+                    components["cadence_answer_section"],
+                    components["cadence_feedback_section"],
+                    components["cadence_next_button_section"],
+                    components["cadence_notation_section"],
+                )
+            ),
+            ui.nav_panel(
+                "Voice Singing",
+                # Build voice UI directly from components
+                ui.div(
+                    components["voice_instructions"],
+                    components["voice_control_section"],
+                    components["voice_recording_indicator"],
+                    components["voice_feedback_section"],
+                    components["voice_notation_section"],
+                )
+            ),
+            id="main_tabs"
         ),
-        id="main_tabs"
-    ),
-)
+    )
 
-# Tab Server Logic
-def create_cadence_tab_server(input, output, session, progression_state, feedback_state, game_flow, grade_state, generator):
-    """
-    Create server logic for cadence identification tab.
+def app_server(input, output, session):
+    """Main application server logic, rewritten to avoid module system."""
+    # Create state objects directly
+    app_state = AppState.create()
+    progression_state = ProgressionState.create()
+    feedback_state = FeedbackState.create()
+    game_flow = GameFlowState.create()
+    voice_state = VoiceState.create()
 
-    Args:
-        input: Shiny input object
-        output: Shiny output object
-        session: Shiny session object
-        progression_state: ProgressionState instance
-        feedback_state: FeedbackState instance
-        game_flow: GameFlowState instance
-        grade_state: GradeState instance
-        generator: Reactive value containing ChordProgressionGenerator
-    """
+    # Reactive generator for cadence identification
+    generator = reactive.Value(
+        ChordProgressionGenerator(**GENERATOR_CONFIG[6])
+    )
+
+    # Helper function to create voice generator based on grade level
+    def create_voice_generator(grade):
+        """Create voice generator based on grade level."""
+        config = VOICE_CONFIG_BY_GRADE.get(grade, VOICE_CONFIG_BY_GRADE[8])
+        return ChordProgressionGenerator(
+            min_length=config['min_length'],
+            max_length=config['max_length'],
+            use_voice_leading=config['use_voice_leading'],
+            use_sevenths=config['use_sevenths'],
+            use_corpus=config['use_corpus'],
+            corpus_temperature=config['corpus_temperature'],
+            keys=config['keys'],
+            use_strict_cadence=config['use_strict_cadence']
+        )
+
+    # Separate generator for voice singing (reactive to grade changes)
+    voice_generator = reactive.Value(
+        create_voice_generator(8)
+    )
+
     # Generate new cadence locally
     async def fetch_new_cadence():
         try:
             # Generate cadence data
-            current_grade = grade_state.level()
+            current_grade = app_state.level()
             allowed_cadences = CADENCE_TYPES_BY_GRADE[current_grade]
             gen = generator()
             cadence_data = generate_new_cadence_data(gen, current_grade, allowed_cadences)
@@ -137,14 +297,14 @@ def create_cadence_tab_server(input, output, session, progression_state, feedbac
 
     # Handle audio loading (first play only)
     @reactive.effect
-    @reactive.event(input.audio_loading)
+    @reactive.event(input.cadence_audio_loading)
     async def _():
-        if input.audio_loading():
+        if input.cadence_audio_loading():
             feedback_state.set("Loading piano samples... (first time only)", "info")
 
     # Play button click handler
     @reactive.Effect
-    @reactive.event(input.play_btn)
+    @reactive.event(input.cadence_play_btn)
     async def _():
         if progression_state.progression() is None:
             return
@@ -176,7 +336,7 @@ def create_cadence_tab_server(input, output, session, progression_state, feedbac
         })
 
     # Answer button handlers
-    async def handle_guess(cadence_type: str, button_id: str):
+    async def handle_guess(cadence_type, button_id):
         if not game_flow.has_played():
             feedback_state.set("Please play the cadence first!", "error")
             return
@@ -226,23 +386,30 @@ def create_cadence_tab_server(input, output, session, progression_state, feedbac
                 "nextVisible": False
             })
 
-    # Factory function to create button event handlers
-    def create_answer_handler(cadence_type: str, button_id: str):
-        @reactive.Effect
-        @reactive.event(getattr(input, button_id))
-        async def _():
-            await handle_guess(cadence_type, button_id)
-        return _
+    # Cadence answer button handlers
+    @reactive.Effect
+    @reactive.event(input.cadence_perfect_btn)
+    async def _():
+        await handle_guess("perfect", "cadence_perfect_btn")
 
-    # Register answer button handlers using factory
-    _perfect_handler = create_answer_handler("perfect", "perfect_btn")
-    _plagal_handler = create_answer_handler("plagal", "plagal_btn")
-    _imperfect_handler = create_answer_handler("imperfect", "imperfect_btn")
-    _interrupted_handler = create_answer_handler("interrupted", "interrupted_btn")
+    @reactive.Effect
+    @reactive.event(input.cadence_plagal_btn)
+    async def _():
+        await handle_guess("plagal", "cadence_plagal_btn")
+
+    @reactive.Effect
+    @reactive.event(input.cadence_imperfect_btn)
+    async def _():
+        await handle_guess("imperfect", "cadence_imperfect_btn")
+
+    @reactive.Effect
+    @reactive.event(input.cadence_interrupted_btn)
+    async def _():
+        await handle_guess("interrupted", "cadence_interrupted_btn")
 
     # Hint button handler
     @reactive.Effect
-    @reactive.event(input.hint_btn)
+    @reactive.event(input.cadence_hint_btn)
     async def _():
         if progression_state.progression() is None or progression_state.cadence_type() is None:
             feedback_state.set("No cadence loaded yet!", "error")
@@ -272,15 +439,15 @@ def create_cadence_tab_server(input, output, session, progression_state, feedbac
 
     # Next button handler
     @reactive.Effect
-    @reactive.event(input.next_btn)
+    @reactive.event(input.cadence_next_btn)
     async def _():
         game_flow.state.set("initial")
         await fetch_new_cadence()
 
-    # Render feedback message
+    # Render cadence feedback message
     @output
     @render.ui
-    def feedback_message():
+    def cadence_feedback_message():
         msg = feedback_state.message()
         msg_type = feedback_state.type()
 
@@ -290,141 +457,7 @@ def create_cadence_tab_server(input, output, session, progression_state, feedbac
         css_class = f"alert alert-{msg_type}"
         return ui.div(msg, class_=css_class)
 
-    # Return fetch_new_cadence for use in grade initialization
-    return fetch_new_cadence
-
-
-# Server logic
-def server(input, output, session):
-    # Grouped reactive state
-    progression_state = ProgressionState.create()
-    feedback_state = FeedbackState.create()
-    game_flow = GameFlowState.create()
-    grade_state = GradeState.create()
-    voice_state = VoiceState.create()  # Voice singing tab state
-
-    # Reactive generator for cadence identification (no global variable!)
-    generator = reactive.Value(
-        ChordProgressionGenerator(**GENERATOR_CONFIG[6])
-    )
-
-    # Helper function to create voice generator based on grade level
-    def create_voice_generator(grade):
-        """Create voice generator based on grade level."""
-        config = VOICE_CONFIG_BY_GRADE.get(grade, VOICE_CONFIG_BY_GRADE[8])
-
-        return ChordProgressionGenerator(
-            min_length=config['min_length'],
-            max_length=config['max_length'],
-            use_voice_leading=config['use_voice_leading'],
-            use_sevenths=config['use_sevenths'],
-            use_corpus=config['use_corpus'],
-            corpus_temperature=config['corpus_temperature'],
-            keys=config['keys'],
-            use_strict_cadence=config['use_strict_cadence']
-        )
-
-    # Separate generator for voice singing (reactive to grade changes)
-    # Initialize with Grade 8 (default), will be updated by reactive effect
-    voice_generator = reactive.Value(
-        create_voice_generator(8)
-    )
-
-    # Initialize cadence tab server logic and get fetch_new_cadence function
-    fetch_new_cadence = create_cadence_tab_server(
-        input, output, session,
-        progression_state, feedback_state, game_flow, grade_state, generator
-    )
-
-    # Initialize: Request saved grade from localStorage
-    @reactive.Effect
-    async def _():
-        # Request saved grade from localStorage
-        await session.send_custom_message("requestSavedGrade", {})
-
-    # Handle saved grade level restoration from localStorage
-    @reactive.effect
-    @reactive.event(input.saved_grade_level)
-    async def _():
-        saved_grade = input.saved_grade_level()
-        if saved_grade and saved_grade in [5, 6, 7, 8]:
-            grade_state.level.set(saved_grade)
-            # Reinitialize cadence generator (only for grades 6-8)
-            if saved_grade >= 6:
-                config = GENERATOR_CONFIG[saved_grade]
-                generator.set(ChordProgressionGenerator(**config))
-
-            # Update slider to reflect saved grade (must use Shiny's API)
-            ui.update_slider("grade_slider", value=saved_grade)
-
-            # Update UI to reflect saved grade
-            await session.send_custom_message("updateGradeUI", {
-                "grade": saved_grade,
-                "availableCadences": [ct.value for ct in CADENCE_TYPES_BY_GRADE[saved_grade]]
-            })
-
-            # Generate first cadence after restoring grade
-            if game_flow.state() == "initial":
-                await fetch_new_cadence()
-
-        # Always mark grade restoration as complete (even if no valid saved grade)
-        # This allows the slider to start working after initialization
-        grade_state.restored.set(True)
-
-    # Handle grade level changes
-    @reactive.Effect
-    @reactive.event(input.grade_slider)
-    async def _():
-        # Don't process slider changes until grade restoration is complete
-        # This prevents the slider's initial value (6) from overwriting the restored grade
-        if not grade_state.restored():
-            return
-
-        new_grade = int(input.grade_slider())
-
-        # Only process if grade actually changed (avoid duplicate updates)
-        if new_grade == grade_state.level():
-            return
-
-        grade_state.level.set(new_grade)
-
-        # Save to localStorage
-        await session.send_custom_message("saveGradeLevel", {
-            "grade": new_grade
-        })
-
-        # Reinitialize cadence generator (only for grades 6-8)
-        if new_grade >= 6:
-            config = GENERATOR_CONFIG[new_grade]
-            generator.set(ChordProgressionGenerator(**config))
-
-            # Update button visibility for cadence tab
-            await session.send_custom_message("updateGradeUI", {
-                "grade": new_grade,
-                "availableCadences": [ct.value for ct in CADENCE_TYPES_BY_GRADE[new_grade]]
-            })
-
-        # Show toast notification
-        if new_grade == 5:
-            toast_msg = f"Grade changed to {new_grade}. Try the Voice Singing tab!"
-        else:
-            toast_msg = f"Grade changed to {new_grade}. Click 'Next Cadence' to start."
-
-        await session.send_custom_message("showToast", {
-            "message": toast_msg
-        })
-
-    # Reactive effect: Update voice generator when grade changes
-    @reactive.Effect
-    def _():
-        current_grade = grade_state.level()
-        voice_generator.set(create_voice_generator(current_grade))
-        print(f"[Voice Tab] Voice generator updated to Grade {current_grade}")
-
-    # ========================================
-    # Voice Singing Tab Handlers
-    # ========================================
-
+    # Voice singing handlers
     # Handle "Try Again" button - replay the same melody
     @reactive.Effect
     @reactive.event(input.voice_try_again_btn)
@@ -438,168 +471,38 @@ def server(input, output, session):
         await session.send_custom_message("clearVoicePlot", {})
 
         # Replay the same melody
-        await replay_voice_melody()
-
-    # Helper function to replay the current melody
-    async def replay_voice_melody():
-        """Replay the current melody without generating a new one."""
-        try:
-            # Get current grade and stored melodies
-            current_grade = grade_state.level()
-            config = VOICE_CONFIG_BY_GRADE.get(current_grade, VOICE_CONFIG_BY_GRADE[8])
-            target_voice_name = voice_state.target_voice()
-
-            # Get stored melodies
-            soprano_melody = voice_state.soprano_melody()
-            bass_melody = voice_state.bass_melody()
-
-            if not soprano_melody and not bass_melody:
-                print("[Voice Tab] No melody to replay - generating new one")
-                await generate_voice_melody()
-                return
-
-            # Reconstruct melodies dict based on grade
-            voice_parts = config['voice_parts']
-            melodies = {}
-            if 'soprano' in voice_parts and soprano_melody:
-                melodies['soprano'] = soprano_melody
-            if 'bass' in voice_parts and bass_melody:
-                melodies['bass'] = bass_melody
-
-            # Get key from stored state
-            current_key = voice_state.target_key()
-
-            print(f"[Voice Tab] Grade {current_grade}: Replaying {len(voice_parts)}-voice melody")
-            print(f"  Target voice: {target_voice_name}")
-
-            # Send to JavaScript for playback
-            await session.send_custom_message("playVoiceMelody", {
-                "melodies": melodies,
-                "targetVoice": target_voice_name,
-                "key": current_key,
-                "grade": current_grade
-            })
-
-            # Start recording (will be triggered by JavaScript)
-            voice_state.is_recording.set(True)
-
-            # Hide try again button during recording
-            await session.send_custom_message("updateVoiceButtons", {
-                "tryAgainVisible": False
-            })
-
-        except Exception as e:
-            print(f"[Voice Tab] Error replaying voice melody: {e}")
-            import traceback
-            traceback.print_exc()
-
-    # Helper function to generate and play melody
-    async def generate_voice_melody():
-        """Generate grade-appropriate melody and start playback."""
-        try:
-            # Get current grade and config
-            current_grade = grade_state.level()
-            config = VOICE_CONFIG_BY_GRADE.get(current_grade, VOICE_CONFIG_BY_GRADE[8])
-            gen = voice_generator()
-
-            # Generate progression
-            cadence_type = random.choice(list(CadenceType))
-            progression = gen.generate_progression(cadence_type)
-
-            # Extract voices based on grade configuration
-            voice_parts = config['voice_parts']
-            melodies = gen.extract_voices(progression, voices=voice_parts)
-
-            # Transpose melodies to comfortable singing range for grades where user sings soprano
-            # Grade 5: User sings soprano (single melody)
-            # Grade 6: User sings soprano (upper part of 2-voice)
-            # Default soprano range: G4-D5 (MIDI 67-74, 392-587 Hz) - too high for most!
-            # Transpose down 12 semitones to G3-D4 (MIDI 55-62, 196-294 Hz) - comfortable tenor/alto range
-            if current_grade in [5, 6]:
-                for voice_name in melodies:
-                    transposed_melody = []
-                    for midi_note, start_time, duration in melodies[voice_name]:
-                        transposed_melody.append((midi_note - 12, start_time, duration))
-                    melodies[voice_name] = transposed_melody
-                print(f"  Transposed all voices down 1 octave for Grade {current_grade}")
-
-            # Get target voice for grading
-            target_voice = config['target_voice']
-            if target_voice is None:
-                # Grade 5: single melody, user sings the only voice
-                target_voice = 'soprano'
-
-            # Get key
-            current_key = progression[0].key.name if progression else 'C'
-
-            # Debug logging
-            print(f"[Voice Tab] Grade {current_grade}: Generated {len(voice_parts)}-voice melody")
-            print(f"  Cadence: {cadence_type.value} in {current_key}")
-            print(f"  Voice parts: {voice_parts}")
-            print(f"  Target voice (user sings): {target_voice}")
-            for voice_name in voice_parts:
-                melody = melodies[voice_name]
-                print(f"  {voice_name.capitalize()}: {len(melody)} notes")
-
-            # Store in state (handle Grade 5 single melody)
-            if current_grade == 5:
-                # Grade 5: only soprano melody
-                voice_state.set_melodies(
-                    soprano=melodies['soprano'],
-                    bass=None,  # No bass in Grade 5
-                    key=current_key
-                )
-            else:
-                # Grades 6-8: multiple voices
-                voice_state.set_melodies(
-                    soprano=melodies.get('soprano', None),
-                    bass=melodies.get('bass', None),
-                    key=current_key
-                )
-
-            # Store target voice for grading
-            voice_state.target_voice.set(target_voice)
-
-            # Send to JavaScript for playback
-            await session.send_custom_message("playVoiceMelody", {
-                "melodies": melodies,
-                "targetVoice": target_voice,
-                "key": current_key,
-                "grade": current_grade
-            })
-
-            # Start recording (will be triggered by JavaScript)
-            voice_state.is_recording.set(True)
-
-            # Hide try again button during recording
-            await session.send_custom_message("updateVoiceButtons", {
-                "tryAgainVisible": False
-            })
-
-        except Exception as e:
-            print(f"[Voice Tab] Error generating voice melody: {e}")
+        await replay_voice_melody(
+            voice_state,
+            app_state,
+            session,
+            voice_generator
+        )
 
     # Generate melody and start playback when "Start Task" is clicked
     @reactive.Effect
     @reactive.event(input.voice_start_btn)
     async def _():
-        await generate_voice_melody()
+        await generate_voice_melody(
+            voice_state,
+            app_state,
+            session,
+            voice_generator
+        )
 
     # Handle voice playback completion
     @reactive.effect
     @reactive.event(input.voice_playback_complete)
     async def _():
-        print("Voice playback completed")
         # Keep recording for 2 more seconds (handled by JavaScript)
+        pass
 
     # Handle recording stopped
     @reactive.effect
     @reactive.event(input.recording_stopped)
     async def _():
         voice_state.is_recording.set(False)
-        print("Recording stopped")
 
-    # Handle recorded pitch data (Phase 5 - DTW and grading)
+    # Handle recorded pitch data
     @reactive.effect
     @reactive.event(input.recorded_pitch)
     async def _():
@@ -608,7 +511,7 @@ def server(input, output, session):
             return
 
         try:
-            from modules.music_theory.voice_analysis import (
+            from lib.music_theory.voice_analysis import (
                 melody_to_pitch_contour,
                 hz_to_midi,
                 apply_median_filter,
@@ -618,10 +521,6 @@ def server(input, output, session):
                 find_best_octave_shift
             )
             import numpy as np
-
-            print(f"Received pitch data: {len(pitch_data.get('data', []))} samples")
-            print(f"Duration: {pitch_data.get('duration', 0):.2f}s")
-            print(f"Sample rate: {pitch_data.get('sampleRate', 0):.1f} Hz")
 
             # Store in state
             voice_state.recorded_pitch.set(pitch_data)
@@ -634,10 +533,7 @@ def server(input, output, session):
                 if freq is not None and freq > 0:
                     recorded_frequencies.append(freq)
 
-            print(f"Valid pitch samples: {len(recorded_frequencies)} / {len(recorded_data)} ({len(recorded_frequencies)/len(recorded_data)*100:.1f}%)")
-
             if len(recorded_frequencies) < 10:
-                print("Not enough valid pitch data for grading")
                 voice_state.grading_result.set({
                     'feedback': 'Not enough clear singing detected. Please try again.',
                     'mae_cents': 0,
@@ -657,19 +553,14 @@ def server(input, output, session):
             # Get target melody based on grade-specific target voice
             target_melody = voice_state.get_target_melody()
             target_voice_name = voice_state.target_voice()
-            grade = grade_state.level()
+            grade = app_state.level()
 
             if target_melody is None:
-                print(f"No target melody for voice: {target_voice_name}")
                 return
-
-            print(f"[Voice Grading] Grade {grade}: Grading against {target_voice_name} voice")
-            print(f"  Target melody: {len(target_melody)} notes")
 
             # Use the actual recording sample rate for target generation
             # This ensures time alignment between target and recording
             recording_sample_rate = pitch_data.get('sampleRate', 20)
-            print(f"  Using sample rate: {recording_sample_rate:.1f} Hz (from recording)")
 
             # Convert target melody to pitch contour at recording sample rate
             target_contour = melody_to_pitch_contour(target_melody, sample_rate=recording_sample_rate)
@@ -689,18 +580,16 @@ def server(input, output, session):
                     soprano_midi = hz_to_midi(soprano_contour[soprano_contour > 0])
                     bass_midi = hz_to_midi(bass_contour[bass_contour > 0])
 
-                    detected_voice, voice_distance = detect_voice_error(
+                    detected_voice, _ = detect_voice_error(
                         recorded_midi_filtered,
                         soprano_midi,
                         bass_midi
                     )
-                    print(f"Detected voice: {detected_voice} (distance: {voice_distance:.2f} semitones)")
 
                     # Check if correct voice was sung
                     if detected_voice == target_voice_name:
                         feedback_prefix = f"✓ You sang the {target_voice_name} voice. "
                     else:
-                        other_voice = "soprano" if target_voice_name == "bass" else "bass"
                         feedback_prefix = f"⚠️ You sang the {detected_voice} voice instead of the {target_voice_name} voice. "
                 else:
                     feedback_prefix = f"✓ Grading against {target_voice_name} voice. "
@@ -709,37 +598,19 @@ def server(input, output, session):
                 feedback_prefix = "✓ "
                 detected_voice = target_voice_name
 
-            # Don't truncate! DTW can handle different length sequences
-            # This allows users to sing at their own pace
-            print(f"  Recorded: {len(recorded_midi_filtered)} samples")
-            print(f"  Target: {len(target_midi)} samples")
-
             # Find the best octave shift (-1, 0, or +1 octaves)
-            best_octave_shift, shift_distance = find_best_octave_shift(
+            best_octave_shift, _ = find_best_octave_shift(
                 recorded_midi_filtered,
                 target_midi
             )
 
-            print(f"Best octave shift: {best_octave_shift} semitones ({best_octave_shift // 12:+d} octave)")
-
             # Align recorded to target using DTW with octave shift
             # DTW handles different sequence lengths naturally
             shifted_recorded = recorded_midi_filtered + best_octave_shift
-            aligned_path, dtw_distance = align_performance(
+            aligned_path, _ = align_performance(
                 shifted_recorded,
                 target_midi
             )
-
-            # Analyze DTW alignment coverage
-            recorded_indices_used = set(i for i, j in aligned_path)
-            target_indices_used = set(j for i, j in aligned_path)
-            coverage_recorded = len(recorded_indices_used) / len(recorded_midi_filtered) * 100
-            coverage_target = len(target_indices_used) / len(target_midi) * 100
-
-            print(f"DTW Alignment:")
-            print(f"  Path length: {len(aligned_path)} pairs")
-            print(f"  Recorded coverage: {len(recorded_indices_used)}/{len(recorded_midi_filtered)} samples ({coverage_recorded:.1f}%)")
-            print(f"  Target coverage: {len(target_indices_used)}/{len(target_midi)} samples ({coverage_target:.1f}%)")
 
             # Grade performance with octave shift
             mae_cents = grade_performance(
@@ -748,9 +619,6 @@ def server(input, output, session):
                 aligned_path,
                 octave_shift=best_octave_shift
             )
-
-            print(f"MAE: {mae_cents:.1f} cents")
-            print(f"DTW distance: {dtw_distance:.1f}")
 
             # Generate feedback based on thresholds
             if mae_cents <= 25:
@@ -782,13 +650,19 @@ def server(input, output, session):
 
             # Create pitch plot
             try:
-                from modules.music_theory.voice_analysis import create_pitch_plot
+                from lib.music_theory.voice_analysis import create_pitch_plot
 
                 # Apply octave shift to recorded data for visualization
                 shifted_recorded_for_plot = recorded_midi_filtered + best_octave_shift
 
                 # Create timestamps for target data using actual recording sample rate
                 target_timestamps = np.linspace(0, len(target_midi) / recording_sample_rate, len(target_midi))
+
+                print("Creating pitch plot with data:", {
+                    "recorded_length": len(shifted_recorded_for_plot),
+                    "target_length": len(target_midi),
+                    "timestamps_length": len(target_timestamps)
+                })
 
                 # Create the plot with shifted data (full length, not truncated)
                 plot_base64 = create_pitch_plot(
@@ -797,34 +671,111 @@ def server(input, output, session):
                     target_timestamps
                 )
 
+                print("Pitch plot created successfully, length:", len(plot_base64) if plot_base64 else 0)
+
                 # Send to JavaScript for display
                 await session.send_custom_message("displayPitchPlot", {
                     "imageData": plot_base64
                 })
 
-                print("Pitch plot generated and sent to UI")
+            except ImportError as e:
+                print(f"Missing plotting dependency: {str(e)}")
+                # Send empty plot data to show placeholder
+                await session.send_custom_message("displayPitchPlot", {
+                    "imageData": ""
+                })
 
-                # Show Try Again button after grading is complete
+            except Exception as e:
+                # Plot creation failed, log the error
+                print(f"Error creating pitch plot: {str(e)}")
+                # Send empty plot data to show placeholder
+                await session.send_custom_message("displayPitchPlot", {
+                    "imageData": ""
+                })
+
+            finally:
+                # Always show Try Again button, whether the plot succeeded or failed
                 await session.send_custom_message("updateVoiceButtons", {
                     "tryAgainVisible": True
                 })
 
-            except Exception as plot_error:
-                print(f"Error creating pitch plot: {plot_error}")
-                import traceback
-                traceback.print_exc()
-
         except Exception as e:
-            print(f"Error during grading: {e}")
-            import traceback
-            traceback.print_exc()
             voice_state.grading_result.set({
                 'feedback': f'Error processing recording: {str(e)}',
                 'mae_cents': 0,
                 'detected_voice': 'error'
             })
 
-    # Render voice feedback message (placeholder for Phase 5)
+    # Render grade-adaptive voice instructions
+    @output
+    @render.ui
+    def voice_instructions_text():
+        """Dynamic instructions based on grade level."""
+        grade = app_state.level()
+
+        instructions = {
+            5: [
+                "Listen to the melody played twice",
+                "Sing back the complete melody from memory",
+                "Your pitch will be analyzed and graded"
+            ],
+            6: [
+                "Listen to the two-part phrase played twice",
+                "Sing back the UPPER part (soprano) from memory",
+                "The lower part provides harmonic context"
+            ],
+            7: [
+                "Listen to the two-part phrase played twice",
+                "Sing back the LOWER part (bass) from memory",
+                "The upper part provides harmonic context"
+            ],
+            8: [
+                "Listen to the three-part phrase played twice",
+                "Sing back the LOWEST part (bass) from memory",
+                "The upper voices provide harmonic context"
+            ]
+        }
+
+        current_instructions = instructions.get(grade, instructions[8])
+
+        return ui.div(
+            ui.h3(f"Grade {grade} - Voice Singing"),
+            ui.tags.ol(*[ui.tags.li(instr) for instr in current_instructions]),
+            ui.p(ui.strong("Note:"), " You'll hear the melody twice before recording begins."),
+            class_="voice-instructions-content"
+        )
+
+    # Render voice target indicator
+    @output
+    @render.ui
+    def voice_target_indicator():
+        """Show which voice the user should sing."""
+        grade = app_state.level()
+        config = VOICE_CONFIG_BY_GRADE.get(grade, VOICE_CONFIG_BY_GRADE[8])
+
+        target_voice = config['target_voice']
+        num_voices = config['num_voices']
+
+        if target_voice is None:
+            # Grade 5 - single melody
+            return ui.div(
+                ui.span("🎵 Sing the melody", class_="voice-target-label"),
+                class_="voice-target-indicator"
+            )
+        else:
+            voice_labels = {
+                'soprano': '🎵 Sing the UPPER part (soprano)',
+                'bass': '🎵 Sing the LOWER part (bass)'
+            }
+
+            return ui.div(
+                ui.span(voice_labels.get(target_voice, target_voice.upper()),
+                       class_="voice-target-label"),
+                ui.p(f"{num_voices}-part harmony", class_="voice-context-label"),
+                class_="voice-target-indicator"
+            )
+
+    # Render voice feedback message
     @output
     @render.ui
     def voice_feedback_message():
@@ -854,6 +805,142 @@ def server(input, output, session):
             class_="alert alert-info"
         )
 
+    # Initialize: Request saved grade from localStorage
+    @reactive.Effect
+    async def _():
+        # Request saved grade from localStorage
+        await session.send_custom_message("requestSavedGrade", {})
+
+    # Handle saved grade level restoration from localStorage
+    @reactive.effect
+    @reactive.event(input.saved_grade_level)
+    async def _():
+        saved_grade = input.saved_grade_level()
+        if saved_grade and saved_grade in [5, 6, 7, 8]:
+            app_state.level.set(saved_grade)
+            # Reinitialize cadence generator (only for grades 6-8)
+            if saved_grade >= 6:
+                config = GENERATOR_CONFIG[saved_grade]
+                generator.set(ChordProgressionGenerator(**config))
+
+            # Update slider to reflect saved grade (must use Shiny's API)
+            ui.update_slider("grade_slider", value=saved_grade)
+
+            # Update UI to reflect saved grade
+            await session.send_custom_message("updateGradeUI", {
+                "grade": saved_grade,
+                "availableCadences": [ct.value for ct in CADENCE_TYPES_BY_GRADE[saved_grade]]
+            })
+
+            # Generate first cadence after restoring grade
+            if game_flow.state() == "initial":
+                await fetch_new_cadence()
+
+        # Always mark grade restoration as complete (even if no valid saved grade)
+        # This allows the slider to start working after initialization
+        app_state.restored.set(True)
+
+    # Handle grade level changes
+    @reactive.Effect
+    @reactive.event(input.grade_slider)
+    async def _():
+        # Don't process slider changes until grade restoration is complete
+        # This prevents the slider's initial value (6) from overwriting the restored grade
+        if not app_state.restored():
+            return
+
+        new_grade = int(input.grade_slider())
+
+        # Only process if grade actually changed (avoid duplicate updates)
+        if new_grade == app_state.level():
+            return
+
+        app_state.level.set(new_grade)
+
+        # Save to localStorage
+        await session.send_custom_message("saveGradeLevel", {
+            "grade": new_grade
+        })
+
+        # Reinitialize cadence generator (only for grades 6-8)
+        if new_grade >= 6:
+            config = GENERATOR_CONFIG[new_grade]
+            generator.set(ChordProgressionGenerator(**config))
+
+            # Update button visibility for cadence tab
+            await session.send_custom_message("updateGradeUI", {
+                "grade": new_grade,
+                "availableCadences": [ct.value for ct in CADENCE_TYPES_BY_GRADE[new_grade]]
+            })
+
+        # Show toast notification
+        if new_grade == 5:
+            toast_msg = f"Grade changed to {new_grade}. Try the Voice Singing tab!"
+        else:
+            toast_msg = f"Grade changed to {new_grade}. Click 'Next Cadence' to start."
+
+        await session.send_custom_message("showToast", {
+            "message": toast_msg
+        })
+
+    # Handle info button click - show grade info modal
+    @reactive.Effect
+    @reactive.event(input.grade_info_button)
+    async def _():
+        current_grade = app_state.level()
+
+        # Create grade-specific content
+        if current_grade == 5:
+            modal_content = ui.div(
+                ui.h3(f"Grade {current_grade} - Voice Singing Only"),
+                ui.p("At this level:"),
+                ui.tags.ul(
+                    ui.tags.li("Focus on single voice singing exercises"),
+                    ui.tags.li("Simple melodies for voice practice"),
+                    ui.tags.li("Grade 5 does not include cadence identification")
+                ),
+                ui.p(ui.strong("Tip:"), " Select Grade 6 or higher for cadence identification exercises.")
+            )
+        else:
+            # Different cadence types available by grade
+            cadence_types = [ct.value.capitalize() for ct in CADENCE_TYPES_BY_GRADE[current_grade]]
+            cadence_list = ", ".join(cadence_types[:-1]) + f" and {cadence_types[-1]}" if len(cadence_types) > 1 else cadence_types[0]
+
+            voice_info = ""
+            if current_grade == 6:
+                voice_info = "In Voice Singing, you'll focus on the upper (soprano) part."
+            elif current_grade >= 7:
+                voice_info = "In Voice Singing, you'll focus on the lower (bass) part."
+
+            modal_content = ui.div(
+                ui.h3(f"Grade {current_grade} Information"),
+                ui.p("At this level:"),
+                ui.tags.ul(
+                    ui.tags.li(f"Cadence types: {cadence_list}"),
+                    ui.tags.li(f"{'Three' if current_grade == 8 else 'Two'}-part harmony exercises"),
+                    ui.tags.li(voice_info)
+                ),
+                ui.p(ui.strong("Tip:"), " Listen carefully to the relationship between the final two chords.")
+            )
+
+        # Show the modal
+        ui.modal_show(
+            ui.modal(
+                modal_content,
+                title=f"Grade {current_grade} Information",
+                easy_close=True,
+                footer=ui.div(
+                    ui.input_action_button("modal_close", "Close", class_="btn-primary")
+                )
+            )
+        )
+
+    # Reactive effect: Update voice generator when grade changes
+    @reactive.Effect
+    def _():
+        current_grade = app_state.level()
+        voice_generator.set(create_voice_generator(current_grade))
+
 # Create app with static files from www directory
 www_dir = Path(__file__).parent / "www"
-app = App(app_ui, server, static_assets=www_dir)
+app = App(app_ui, app_server, static_assets=www_dir)
