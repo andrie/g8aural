@@ -210,6 +210,20 @@ if (typeof window.Shiny !== 'undefined') {
         });
 
         try {
+            // MOBILE FIX: Initialize microphone BEFORE melody playback starts
+            // Mobile browsers require getUserMedia() to be called during a user gesture.
+            // Shiny message handlers run shortly after button clicks, so we initialize
+            // the microphone here while the gesture context is still valid.
+            if (window.voiceMicrophone) {
+                console.log("Pre-initializing microphone for mobile compatibility...");
+                const micInitialized = await window.voiceMicrophone.initialize();
+                if (micInitialized) {
+                    console.log("Microphone pre-initialized successfully");
+                } else {
+                    console.warn("Microphone pre-initialization failed - recording may not work");
+                }
+            }
+
             console.log(`Starting Grade ${grade} voice melody playback...`);
 
             // Check if melodies are empty
@@ -349,3 +363,72 @@ window.voicePlayback = {
     stop: stopVoicePlayback,
     isPlaying: () => voiceIsPlaying
 };
+
+/**
+ * MOBILE FIX: Attach direct click handler to voice_start_btn
+ *
+ * Mobile browsers require getUserMedia() and AudioContext creation to happen
+ * during an actual user gesture (tap/click). Shiny's message handlers run
+ * asynchronously after the button click, which may be "too late" for mobile.
+ *
+ * This direct click handler ensures microphone initialization happens
+ * immediately during the user gesture, before Shiny processes the click.
+ */
+function attachMicrophonePreInitHandler() {
+    // Attach to Start Task button
+    const startBtn = document.getElementById('voice_start_btn');
+    if (startBtn && !startBtn._micHandlerAttached) {
+        startBtn.addEventListener('click', function(event) {
+            console.log("Start button clicked - pre-initializing microphone for mobile...");
+            if (window.voiceMicrophone) {
+                // Don't await here to avoid blocking Shiny's click processing
+                // The initialization will complete before the melody finishes
+                window.voiceMicrophone.initialize().then(success => {
+                    if (success) {
+                        console.log("Microphone pre-initialized on button click");
+                    } else {
+                        console.warn("Microphone pre-init failed on button click");
+                    }
+                }).catch(err => {
+                    console.error("Microphone pre-init error:", err);
+                });
+            }
+        }, { capture: true }); // Use capture phase to run before Shiny handlers
+        startBtn._micHandlerAttached = true;
+        console.log("Microphone pre-init handler attached to Start button");
+    }
+
+    // Attach to Try Again button
+    const tryAgainBtn = document.getElementById('voice_try_again_btn');
+    if (tryAgainBtn && !tryAgainBtn._micHandlerAttached) {
+        tryAgainBtn.addEventListener('click', function(event) {
+            console.log("Try Again button clicked - pre-initializing microphone for mobile...");
+            if (window.voiceMicrophone) {
+                window.voiceMicrophone.initialize().then(success => {
+                    if (success) {
+                        console.log("Microphone pre-initialized on Try Again click");
+                    } else {
+                        console.warn("Microphone pre-init failed on Try Again click");
+                    }
+                }).catch(err => {
+                    console.error("Microphone pre-init error:", err);
+                });
+            }
+        }, { capture: true });
+        tryAgainBtn._micHandlerAttached = true;
+        console.log("Microphone pre-init handler attached to Try Again button");
+    }
+}
+
+// Attach handler when DOM is ready, or use MutationObserver for dynamic content
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', attachMicrophonePreInitHandler);
+} else {
+    attachMicrophonePreInitHandler();
+}
+
+// Also use MutationObserver to handle Shiny's dynamic rendering
+const observer = new MutationObserver(function(mutations) {
+    attachMicrophonePreInitHandler();
+});
+observer.observe(document.body, { childList: true, subtree: true });

@@ -40,8 +40,15 @@ const MAX_FREQUENCY = 800;          // Hz
 
 /**
  * Request microphone access and initialize audio context
+ * Returns true if successfully initialized (or already initialized)
  */
 async function initializeMicrophone() {
+    // Skip if already initialized
+    if (audioContext && pitchDetector && mediaStream) {
+        console.log("Microphone already initialized, skipping");
+        return true;
+    }
+
     try {
         // Request microphone access
         mediaStream = await navigator.mediaDevices.getUserMedia({
