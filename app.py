@@ -4,7 +4,7 @@ Sharp Ear - Shiny for Python Frontend
 from shiny import App, ui, reactive, render
 from pathlib import Path
 from config.app_config import CADENCE_TYPES_BY_GRADE, GENERATOR_CONFIG, VOICE_CONFIG_BY_GRADE
-from lib.music_theory.progression import ChordProgressionGenerator
+from lib.music_theory.enhanced_progression import EnhancedChordProgressionGenerator
 from state.app_state import AppState
 from state.cadence_state import ProgressionState, FeedbackState, GameFlowState
 from state.voice_state import VoiceState
@@ -200,14 +200,14 @@ def app_ui(request):
             ui.tags.script(src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"),
             # Include VexFlow
             ui.tags.script(src="https://cdn.jsdelivr.net/npm/vexflow@4.2.2/build/cjs/vexflow.js"),
-            # Include custom JavaScript
-            ui.tags.script(src="audio.js"),
-            ui.tags.script(src="notation.js"),
-            ui.tags.script(src="grade-ui.js"),
+            # Include custom JavaScript - shared modules
+            ui.tags.script(src="js/shared/audio.js"),
+            ui.tags.script(src="js/shared/notation.js"),
+            ui.tags.script(src="js/common/grade-ui.js"),
             # Load microphone.js as ES module (imports Pitchy internally)
-            ui.tags.script(src="microphone.js", type="module"),
-            ui.tags.script(src="voice-playback.js"),
-            ui.tags.script(src="pitch-plot.js"),
+            ui.tags.script(src="js/voice/microphone.js", type="module"),
+            ui.tags.script(src="js/voice/voice-playback.js"),
+            ui.tags.script(src="js/voice/pitch-plot.js"),
         ),
         # Header and grade selection (shared across all tabs)
         components["header"],
@@ -251,14 +251,14 @@ def app_server(input, output, session):
 
     # Reactive generator for cadence identification
     generator = reactive.Value(
-        ChordProgressionGenerator(**GENERATOR_CONFIG[6])
+        EnhancedChordProgressionGenerator(**GENERATOR_CONFIG[6])
     )
 
     # Helper function to create voice generator based on grade level
     def create_voice_generator(grade):
         """Create voice generator based on grade level."""
         config = VOICE_CONFIG_BY_GRADE.get(grade, VOICE_CONFIG_BY_GRADE[8])
-        return ChordProgressionGenerator(
+        return EnhancedChordProgressionGenerator(
             min_length=config['min_length'],
             max_length=config['max_length'],
             use_voice_leading=config['use_voice_leading'],
@@ -425,7 +425,8 @@ def app_server(input, output, session):
             "noteNames": progression_state.note_names(),
             "chordSymbols": progression_state.chord_symbols(),
             "cadenceType": progression_state.cadence_type(),
-            "key": progression_state.key()
+            "key": progression_state.key(),
+            "containerId": "cadence-notation-container"
         })
 
         # Show notation section and next button, disable answer buttons, hide hint button
@@ -821,7 +822,7 @@ def app_server(input, output, session):
             # Reinitialize cadence generator (only for grades 6-8)
             if saved_grade >= 6:
                 config = GENERATOR_CONFIG[saved_grade]
-                generator.set(ChordProgressionGenerator(**config))
+                generator.set(EnhancedChordProgressionGenerator(**config))
 
             # Update slider to reflect saved grade (must use Shiny's API)
             ui.update_slider("grade_slider", value=saved_grade)
@@ -865,7 +866,7 @@ def app_server(input, output, session):
         # Reinitialize cadence generator (only for grades 6-8)
         if new_grade >= 6:
             config = GENERATOR_CONFIG[new_grade]
-            generator.set(ChordProgressionGenerator(**config))
+            generator.set(EnhancedChordProgressionGenerator(**config))
 
             # Update button visibility for cadence tab
             await session.send_custom_message("updateGradeUI", {

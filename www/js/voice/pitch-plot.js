@@ -8,12 +8,28 @@
 Shiny.addCustomMessageHandler("displayPitchPlot", function(message) {
     const { imageData } = message;
 
-    console.log("Received pitch plot data");
+    console.log("Received pitch plot data, length:", imageData ? imageData.length : 0);
 
     // Get the plot container
     const plotContainer = document.getElementById('voice-pitch-plot');
     if (!plotContainer) {
         console.error("Plot container not found");
+        return;
+    }
+
+    // Clear previous plot
+    plotContainer.innerHTML = '';
+
+    // Check if we have valid image data
+    if (!imageData || imageData.length < 100) {
+        console.warn("No valid image data received for pitch plot");
+        // Add a placeholder message
+        const placeholder = document.createElement('p');
+        placeholder.textContent = 'Pitch visualization is not available.';
+        placeholder.style.padding = '20px';
+        placeholder.style.textAlign = 'center';
+        placeholder.style.color = '#666';
+        plotContainer.appendChild(placeholder);
         return;
     }
 
@@ -28,8 +44,7 @@ Shiny.addCustomMessageHandler("displayPitchPlot", function(message) {
     img.style.borderRadius = '4px';
     img.style.marginTop = '20px';
 
-    // Clear previous plot and add new one
-    plotContainer.innerHTML = '';
+    // Add new plot
     plotContainer.appendChild(img);
 
     console.log("Pitch plot displayed");

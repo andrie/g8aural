@@ -29,7 +29,7 @@ GENERATOR_CONFIG = {
     6: {
         'min_length': 3,  # Not used in pure 3-chord mode
         'max_length': 3,  # Not used in pure 3-chord mode
-        'use_voice_leading': False,  # Simple root position only
+        'use_voice_leading': True,  # SATB voice leading for 4-note chords
         'use_sevenths': False,  # No 7th chords
         'use_corpus': True,  # Still use Bach patterns
         'corpus_temperature': 0.7,  # More predictable
@@ -39,7 +39,7 @@ GENERATOR_CONFIG = {
     7: {
         'min_length': 4,  # Not used in pure 3-chord mode
         'max_length': 5,  # Not used in pure 3-chord mode
-        'use_voice_leading': False,  # Still root position
+        'use_voice_leading': True,  # SATB voice leading for 4-note chords
         'use_sevenths': False,  # Keep triads only
         'use_corpus': True,
         'corpus_temperature': 0.7,

@@ -119,7 +119,8 @@ async def handle_correct_answer(
         "noteNames": progression_state.note_names(),
         "chordSymbols": progression_state.chord_symbols(),
         "cadenceType": correct_cadence,
-        "key": progression_state.key()
+        "key": progression_state.key(),
+        "containerId": "cadence-notation-container"
     })
 
     # Show notation section and next button, hide hint button
@@ -220,4 +221,4 @@ async def initialize_new_cadence(
     await session.send_custom_message("resetButtonText", {})
 
     # Clear notation
-    await session.send_custom_message("clearNotation", {})
+    await session.send_custom_message("clearNotation", {"containerId": "cadence-notation-container"})

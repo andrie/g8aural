@@ -2,9 +2,11 @@
 
 ## Project Overview
 
-Web application for ABRSM aural training where students listen to chord progressions and identify cadence types (Perfect, Plagal, Imperfect, Interrupted). Built with Shiny for Python.
+G8aural is a web application for ABRSM aural training where students practice two key skills:
+1. **Cadence Identification** - Listen to chord progressions and identify cadence types (Perfect, Plagal, Imperfect, Interrupted)
+2. **Voice Singing** - Sing back melodies from memory with real-time pitch detection and feedback
 
-**Single self-contained application**: Everything runs in one Python process.
+Built as a single self-contained Shiny for Python application where everything runs in one process.
 
 ## Architecture Overview
 
@@ -20,16 +22,28 @@ Shiny App (app.py)
 
 ## Core Components
 
-- **Music Theory Engine**: Generates chord progressions with voice leading
+- **Music Theory Engine**: Generates chord progressions with voice leading using music21
 - **Reactive UI**: Interactive user interface based on Shiny's reactive model
 - **Tab Modules**: Feature-specific modules for cadence identification and voice singing
+- **Pitch Detection**: Real-time pitch analysis and feedback for voice singing exercises
 
-## Quick Links
+## Documentation Resources
 
-- Setup and run instructions: [SETUP.md](./.claude/guides/SETUP.md)
-- Project structure: [STRUCTURE.md](./.claude/guides/STRUCTURE.md)
-- Music theory engine details: [MUSIC_THEORY.md](./.claude/guides/MUSIC_THEORY.md)
-- Common development tasks: [DEVELOPMENT.md](./.claude/guides/DEVELOPMENT.md)
+The project documentation is organized in the following structure:
+
+- **Project Vision and Plans**:
+  - [VISION.md](./plans/VISION.md) - Educational purpose and core features
+  - [ARCHITECTURE.md](./plans/ARCHITECTURE.md) - Technical architecture details
+  - [ROADMAP.md](./plans/ROADMAP.md) - Future development plans
+
+- **Technical Guides**:
+  - [SETUP.md](./.claude/guides/SETUP.md) - Installation and setup instructions
+  - [STRUCTURE.md](./.claude/guides/STRUCTURE.md) - Project structure details
+  - [MUSIC_THEORY.md](./.claude/guides/MUSIC_THEORY.md) - Music theory engine details
+  - [DEVELOPMENT.md](./.claude/guides/DEVELOPMENT.md) - Common development tasks
+
+- **Historical Documentation**:
+  - [Plans Archive](./plans/archive/) - Historical planning documents organized by development phase
 
 ## Quick Start
 
@@ -52,64 +66,13 @@ shiny run app.py --port 8080 --reload
 
 Access at: http://localhost:8080
 
-### Debug Mode
+### Run the Test App (Voice Leading Development)
 
 ```bash
-shiny run app.py --log-level debug
+shiny run chord_test_app.py --port 8081 --reload
 ```
 
-## Technology Stack
-
-- **Framework**: Shiny for Python (reactive web framework)
-- **Music Theory**: music21 library (professional music toolkit with Bach corpus integration)
-- **Audio**: Tone.js (JavaScript library via CDN)
-- **Notation**: VexFlow (JavaScript library via CDN)
-
-## Architecture Details
-
-The application uses a modular architecture with the following components:
-
-### 1. Server-Side Components
-
-- **Main App (app.py)**: Central application file that defines both UI and server logic
-   - Uses direct handler imports instead of Shiny modules
-   - Defines UI components directly in app_ui function
-   - Implements server logic in app_server function including reactive effects
-
-- **State Management**: Reactive state objects in `state/`
-   - `app_state.py`: Application-wide state (grade level, settings)
-   - `cadence_state.py`: Cadence-specific state (ProgressionState, FeedbackState, GameFlowState)
-   - `voice_state.py`: Voice-specific state (melody data, recording state)
-
-- **Logic Handlers**: Feature-specific handlers in `modules/` directory
-   - `modules/cadence/handlers.py`: Functions for cadence identification
-   - `modules/voice/handlers.py`: Functions for voice singing features
-   - Each handler exports specific functions imported directly by app.py
-
-- **Music Theory Engine**: Core music theory functionality in `lib/music_theory/`
-   - `progression.py`: Chord progression generator
-   - `voice_analysis.py`: Voice singing analysis and grading logic
-
-### 2. Client-Side Components
-
-- **JavaScript Architecture**: Feature-specific JS modules in `www/`
-   - Each module focuses on a single responsibility
-   - Communicates with Shiny server via custom message handlers
-
-- **Key JavaScript Modules**:
-   - `audio.js`: Cadence playback using Tone.js
-   - `notation.js`: Music notation rendering with VexFlow
-   - `grade-ui.js`: Grade selection UI functionality
-   - `microphone.js`: Voice recording using Web Audio API
-   - `voice-playback.js`: Voice playback and recording coordination
-   - `pitch-plot.js`: Visualization of pitch data
-
-### 3. UI Components
-
-- **Shared Components**: Common UI elements in `ui/components.py`
-- **Layout Elements**: Page layout components in `ui/layout.py`
-
-This architecture uses direct imports rather than traditional Shiny modules, with clear separation between state management, handlers, and UI components.
+Access at: http://localhost:8081
 
 ## Key Constraints
 
@@ -119,3 +82,22 @@ This architecture uses direct imports rather than traditional Shiny modules, wit
 - **music21 required**: Don't replace with simpler implementation. Musical quality depends on music21.
 - **Corpus data is precomputed**: Don't load Bach chorales at runtime. Use precomputed JSON.
 - **No backend server**: Single Shiny app. Don't split into frontend/backend.
+
+## Feature Overview
+
+### 1. Cadence Identification (Grades 6-8)
+- Students listen to chord progressions played with piano sounds
+- Students identify the cadence type (Perfect, Plagal, Imperfect, Interrupted)
+- Grade-specific difficulty levels (6-8) with appropriate cadence types
+- Musical-quality progressions using Bach corpus patterns
+- Interactive feedback with visual notation after correct answers
+
+### 2. Voice Singing (Grades 5-8)
+- Grade-specific melodic exercises:
+  - Grade 5: Single melody to sing from memory
+  - Grade 6: Upper part of two-part phrase
+  - Grade 7: Lower part of two-part phrase
+  - Grade 8: Lowest part of three-part phrase
+- Real-time pitch detection and analysis
+- Octave-invariant grading system
+- Visual feedback with pitch contour display
