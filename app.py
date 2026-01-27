@@ -307,6 +307,9 @@ def app_server(input, output, session):
     @reactive.event(input.cadence_play_btn)
     async def _():
         if progression_state.progression() is None:
+            # No cadence loaded - try to generate one
+            feedback_state.set("Loading cadence...", "info")
+            await fetch_new_cadence()
             return
 
         game_flow.is_playing.set(True)

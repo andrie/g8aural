@@ -29,6 +29,7 @@ async function initAudio() {
                 },
                 baseUrl: "https://tonejs.github.io/audio/salamander/",
             }).toDestination();
+            piano.volume.value = -12; // Reduce volume (dB)
 
             await Tone.loaded();
         } else {
