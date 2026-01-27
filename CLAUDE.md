@@ -83,6 +83,23 @@ Access at: http://localhost:8081
 - **Corpus data is precomputed**: Don't load Bach chorales at runtime. Use precomputed JSON.
 - **No backend server**: Single Shiny app. Don't split into frontend/backend.
 
+## Testing Requirements
+
+**IMPORTANT: Always use pytest to run tests. Never create inline or temporary test files.**
+
+- All tests live in `tests/` directory
+- Run tests with pytest, not inline Python:
+  ```bash
+  pytest tests/                    # Run all tests
+  pytest tests/test_specific.py   # Run specific file
+  pytest -k 'test_name'           # Run tests matching pattern
+  pytest -x                       # Stop on first failure
+  ```
+- Add new tests to `tests/test_*.py` files, not temporary files
+- Never use `python -c` with test assertions
+- Never create test files in `/tmp/` or outside `tests/`
+- The `pytest.ini` configures test discovery and output options
+
 ## Feature Overview
 
 ### 1. Cadence Identification (Grades 6-8)

@@ -20,9 +20,9 @@ This file serves as:
 """
 
 import pytest
-from modules.music_theory.progression import ChordProgressionGenerator
-from modules.music_theory.cadences import CadenceType
-from config.app_config import KEYS_BY_GRADE, CADENCE_TYPES_BY_GRADE, GENERATOR_CONFIG
+from src.music_theory.progression import ChordProgressionGenerator
+from src.music_theory.cadences import CadenceType
+from src.config.app_config import KEYS_BY_GRADE, CADENCE_TYPES_BY_GRADE, GENERATOR_CONFIG
 
 
 @pytest.mark.integration

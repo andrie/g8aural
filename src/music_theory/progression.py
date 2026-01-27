@@ -194,9 +194,13 @@ class ChordProgressionGenerator:
                 cadence_constraints = self._generate_inversion_constraints(cadence_type)
                 full_constraints = [None] * len(intro_degrees) + cadence_constraints
 
+                # First chord must always be root position to establish the key center
+                if len(full_constraints) > 0:
+                    full_constraints[0] = [0]
+
                 logger.debug(
                     f"Hybrid mode: {len(intro_degrees)} lead-in chords + 3 cadence chords. "
-                    f"Constraints on final 3: {cadence_constraints}"
+                    f"Constraints on final 3: {cadence_constraints}, first chord forced to root position"
                 )
 
                 # Get the voiced progression
@@ -344,7 +348,10 @@ class ChordProgressionGenerator:
 
     def _generate_inversion_constraints(self, cadence_type: CadenceType) -> List[List[int]]:
         """
-        Get inversion constraints for the cadence from GRADE_8_INVERSION_RULES.
+        Get inversion constraints for the cadence based on grade level.
+
+        For Grade 8 (use_strict_cadence=True): Uses GRADE_8_INVERSION_RULES with various inversions.
+        For Grades 6-7 (use_strict_cadence=False): All chords in root position per ABRSM syllabus.
 
         Args:
             cadence_type: The type of cadence
@@ -354,12 +361,16 @@ class ChordProgressionGenerator:
             Inversions: 0=root, 1=first, 2=second, 3=third (for 7th chords)
 
         Examples:
-            >>> generator = ChordProgressionGenerator()
+            >>> generator = ChordProgressionGenerator(use_strict_cadence=True)  # Grade 8
             >>> constraints = generator._generate_inversion_constraints(CadenceType.PERFECT)
             >>> constraints
             [[2], [0, 1, 2], [0]]
+            >>> generator = ChordProgressionGenerator(use_strict_cadence=False)  # Grades 6-7
+            >>> constraints = generator._generate_inversion_constraints(CadenceType.PERFECT)
+            >>> constraints
+            [[0], [0], [0]]
         """
-        return CadencePattern.get_allowed_inversions(cadence_type)
+        return CadencePattern.get_allowed_inversions(cadence_type, self.use_strict_cadence)
 
     def progression_to_inversions(self, progression: List[roman.RomanNumeral],
                                   voiced_midi: Optional[List[List[int]]] = None) -> List[int]:

@@ -7,7 +7,7 @@ enabling atomic updates and clearer state ownership for the cadence identificati
 from dataclasses import dataclass
 from typing import List
 from shiny import reactive
-from lib.music_theory.cadences import CadenceType
+from src.music_theory.cadences import CadenceType
 
 
 @dataclass

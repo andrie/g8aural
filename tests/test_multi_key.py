@@ -4,8 +4,8 @@ Test 3-chord cadences with multiple keys (major and minor).
 """
 
 import sys
-from modules.music_theory.progression import ChordProgressionGenerator
-from modules.music_theory.cadences import CadenceType
+from src.music_theory.progression import ChordProgressionGenerator
+from src.music_theory.cadences import CadenceType
 
 def test_keys():
     """Test cadences in different keys."""

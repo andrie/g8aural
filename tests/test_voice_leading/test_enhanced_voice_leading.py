@@ -7,8 +7,8 @@ it follows proper voice leading rules and creates musical progressions.
 
 import unittest
 from music21 import roman, pitch, key
-from lib.music_theory.voice_leading import VoiceLeader
-from lib.music_theory.enhanced_voice_leading import EnhancedVoiceLeader
+from src.music_theory.voice_leading import VoiceLeader
+from src.music_theory.enhanced_voice_leading import EnhancedVoiceLeader
 
 
 class TestEnhancedVoiceLeading(unittest.TestCase):

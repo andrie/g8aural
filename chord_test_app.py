@@ -6,7 +6,7 @@ and collecting feedback on musicality.
 """
 from pathlib import Path
 from shiny import App, ui, reactive
-import modules.chord_test.handlers as handlers
+import src.chord_test.handlers as handlers
 
 
 def app_ui(request):

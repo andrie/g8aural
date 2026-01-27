@@ -7,9 +7,9 @@ to ensure they properly enforce inversion constraints from GRADE_8_INVERSION_RUL
 """
 
 from music21 import roman
-from modules.music_theory.voice_leading import VoiceLeader
-from modules.music_theory.cadences import CadenceType, CadencePattern, GRADE_8_INVERSION_RULES
-from modules.music_theory.roman_numerals import ChordFactory
+from src.music_theory.voice_leading import VoiceLeader
+from src.music_theory.cadences import CadenceType, CadencePattern, GRADE_8_INVERSION_RULES
+from src.music_theory.roman_numerals import ChordFactory
 
 
 def test_perfect_cadence():

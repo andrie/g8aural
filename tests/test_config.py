@@ -6,8 +6,8 @@ and generator parameters.
 """
 
 import pytest
-from modules.music_theory.cadences import CadenceType
-from config.app_config import (
+from src.music_theory.cadences import CadenceType
+from src.config.app_config import (
     KEYS_BY_GRADE,
     CADENCE_TYPES_BY_GRADE,
     GENERATOR_CONFIG,
@@ -128,18 +128,18 @@ class TestGeneratorConfiguration:
                 assert key in config, f"Grade {grade} missing required key '{key}'"
 
     def test_grade_6_configuration(self):
-        """Grade 6: Simple root position, no voice leading, no 7ths."""
+        """Grade 6: SATB voice leading, root position only, no 7ths."""
         config = GENERATOR_CONFIG[6]
-        assert config['use_voice_leading'] is False
+        assert config['use_voice_leading'] is True  # SATB voice leading enabled
         assert config['use_sevenths'] is False
         assert config['use_strict_cadence'] is False  # Pure 3-chord mode
         assert config['min_length'] == 3
         assert config['max_length'] == 3
 
     def test_grade_7_configuration(self):
-        """Grade 7: Still root position, no voice leading, no 7ths."""
+        """Grade 7: SATB voice leading, root position only, no 7ths."""
         config = GENERATOR_CONFIG[7]
-        assert config['use_voice_leading'] is False
+        assert config['use_voice_leading'] is True  # SATB voice leading enabled
         assert config['use_sevenths'] is False
         assert config['use_strict_cadence'] is False  # Pure 3-chord mode
 

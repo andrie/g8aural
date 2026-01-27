@@ -5,7 +5,7 @@ Run with: pytest tests/test_voice_analysis.py
 """
 import numpy as np
 import pytest
-from modules.music_theory.voice_analysis import (
+from src.music_theory.voice_analysis import (
     melody_to_pitch_contour,
     hz_to_midi,
     apply_median_filter,

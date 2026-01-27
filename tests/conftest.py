@@ -5,9 +5,9 @@ This module provides common fixtures used across multiple test files.
 """
 
 import pytest
-from modules.music_theory.progression import ChordProgressionGenerator
-from modules.music_theory.cadences import CadenceType
-from state.game_state import ProgressionState, FeedbackState, GameFlowState, GradeState
+from src.music_theory.progression import ChordProgressionGenerator
+from src.music_theory.cadences import CadenceType
+from src.state.game_state import ProgressionState, FeedbackState, GameFlowState, GradeState
 
 
 @pytest.fixture

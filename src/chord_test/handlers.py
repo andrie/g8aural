@@ -9,9 +9,9 @@ import json
 import datetime
 from typing import Dict, Any
 
-from lib.music_theory.cadences import CadenceType
-from lib.music_theory.progression import ChordProgressionGenerator
-from lib.music_theory.enhanced_progression import EnhancedChordProgressionGenerator
+from src.music_theory.cadences import CadenceType
+from src.music_theory.progression import ChordProgressionGenerator
+from src.music_theory.enhanced_progression import EnhancedChordProgressionGenerator
 
 
 def get_timestamp() -> str:

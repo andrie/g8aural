@@ -6,8 +6,8 @@ and progression generation.
 """
 
 import pytest
-from modules.music_theory.cadences import CadenceType
-from handlers.game_logic import (
+from src.music_theory.cadences import CadenceType
+from src.handlers.game_logic import (
     validate_guess,
     get_feedback_message,
     generate_new_cadence_data
@@ -178,7 +178,7 @@ class TestGenerateNewCadenceData:
 
     def test_grade_6_generates_two_cadence_types(self, basic_generator):
         """Grade 6 only generates Perfect and Imperfect cadences."""
-        from config.app_config import CADENCE_TYPES_BY_GRADE
+        from src.config.app_config import CADENCE_TYPES_BY_GRADE
 
         grade_6_cadences = CADENCE_TYPES_BY_GRADE[6]
         generated_types = set()
@@ -197,7 +197,7 @@ class TestGenerateNewCadenceData:
 
     def test_grade_8_can_generate_all_types(self, basic_generator):
         """Grade 8 can generate all four cadence types."""
-        from config.app_config import CADENCE_TYPES_BY_GRADE
+        from src.config.app_config import CADENCE_TYPES_BY_GRADE
 
         grade_8_cadences = CADENCE_TYPES_BY_GRADE[8]
         generated_types = set()
@@ -217,7 +217,7 @@ class TestGenerateNewCadenceData:
 
     def test_hybrid_mode_generates_longer_progressions(self, hybrid_generator):
         """Hybrid mode (Grade 8) generates 4-8 chord progressions."""
-        from config.app_config import CADENCE_TYPES_BY_GRADE
+        from src.config.app_config import CADENCE_TYPES_BY_GRADE
 
         grade_8_cadences = CADENCE_TYPES_BY_GRADE[8]
 
@@ -234,7 +234,7 @@ class TestGenerateNewCadenceData:
 
     def test_pure_mode_generates_three_chords(self, basic_generator):
         """Pure mode (Grades 6-7) generates exactly 3 chords."""
-        from config.app_config import CADENCE_TYPES_BY_GRADE
+        from src.config.app_config import CADENCE_TYPES_BY_GRADE
 
         grade_6_cadences = CADENCE_TYPES_BY_GRADE[6]
 
@@ -251,7 +251,7 @@ class TestGenerateNewCadenceData:
 
     def test_multiple_keys_generates_variety(self, multi_key_generator):
         """Generator with multiple keys produces variety."""
-        from config.app_config import CADENCE_TYPES_BY_GRADE
+        from src.config.app_config import CADENCE_TYPES_BY_GRADE
 
         grade_8_cadences = CADENCE_TYPES_BY_GRADE[8]
         generated_keys = set()

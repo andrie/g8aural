@@ -4,7 +4,7 @@ Application configuration for g8aural cadence training.
 This module contains configuration dictionaries for different grade levels,
 including key signatures, cadence types, and generator parameters.
 """
-from lib.music_theory.cadences import CadenceType
+from src.music_theory.cadences import CadenceType
 
 # Keys with up to 3 sharps or flats (Grades 6-8 requirement)
 KEYS_BY_GRADE = {

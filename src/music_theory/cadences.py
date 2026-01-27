@@ -13,6 +13,15 @@ class CadenceType(Enum):
     INTERRUPTED = "interrupted"  # I → V(7) → vi
 
 
+# Grade 6-7 inversion rules: ALL chords in root position
+# Per ABRSM syllabus: "The chords forming the cadence will be in root position"
+GRADES_6_7_INVERSION_RULES = {
+    CadenceType.PERFECT: [[0], [0], [0]],
+    CadenceType.PLAGAL: [[0], [0], [0]],
+    CadenceType.IMPERFECT: [[0], [0], [0]],
+    CadenceType.INTERRUPTED: [[0], [0], [0]],
+}
+
 # Grade 8 inversion rules for 3-chord cadence patterns
 # Format: {CadenceType: [(chord1_inversions), (chord2_inversions), (chord3_inversions)]}
 # Inversions: 0=root, 1=first, 2=second, 3=third (for 7th chords)
@@ -83,22 +92,29 @@ class CadencePattern:
         return approaches[cadence_type]
 
     @staticmethod
-    def get_allowed_inversions(cadence_type: CadenceType) -> List[List[int]]:
+    def get_allowed_inversions(cadence_type: CadenceType, use_strict_cadence: bool = True) -> List[List[int]]:
         """
-        Get the allowed inversions for each chord in a Grade 8 cadence pattern.
+        Get the allowed inversions for each chord in a cadence pattern.
 
         Args:
             cadence_type: The type of cadence
+            use_strict_cadence: If True, use Grade 8 rules (allows inversions).
+                               If False, use Grades 6-7 rules (root position only).
 
         Returns:
             List of three lists, each containing allowed inversion numbers for that chord.
             Inversions: 0=root, 1=first, 2=second, 3=third (for 7th chords)
 
         Example:
-            >>> CadencePattern.get_allowed_inversions(CadenceType.PERFECT)
-            [[2], [0, 1, 2], [0]]  # Ic, V(7), I
+            >>> CadencePattern.get_allowed_inversions(CadenceType.PERFECT, use_strict_cadence=True)
+            [[2], [0, 1, 2], [0]]  # Grade 8: Ic, V(7), I
+            >>> CadencePattern.get_allowed_inversions(CadenceType.PERFECT, use_strict_cadence=False)
+            [[0], [0], [0]]  # Grades 6-7: all root position
         """
-        return GRADE_8_INVERSION_RULES[cadence_type]
+        if use_strict_cadence:
+            return GRADE_8_INVERSION_RULES[cadence_type]
+        else:
+            return GRADES_6_7_INVERSION_RULES[cadence_type]
 
     @staticmethod
     def get_display_name(cadence_type: CadenceType) -> str:

@@ -18,8 +18,8 @@ import sys
 import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from modules.music_theory.progression import ChordProgressionGenerator
-from modules.music_theory.cadences import CadenceType
+from src.music_theory.progression import ChordProgressionGenerator
+from src.music_theory.cadences import CadenceType
 
 try:
     import pytest

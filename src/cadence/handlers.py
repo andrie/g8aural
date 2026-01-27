@@ -6,7 +6,7 @@ This module contains extracted business logic functions for cadence identificati
 import random
 from typing import List, Dict, Any
 
-from lib.music_theory.cadences import CadenceType
+from src.music_theory.cadences import CadenceType
 
 
 def validate_guess(guess: str, correct_answer: str) -> bool:

@@ -7,9 +7,9 @@ it creates progressions with improved voice leading.
 
 import unittest
 from music21 import pitch
-from lib.music_theory.cadences import CadenceType
-from lib.music_theory.progression import ChordProgressionGenerator
-from lib.music_theory.enhanced_progression import EnhancedChordProgressionGenerator
+from src.music_theory.cadences import CadenceType
+from src.music_theory.progression import ChordProgressionGenerator
+from src.music_theory.enhanced_progression import EnhancedChordProgressionGenerator
 
 
 class TestEnhancedProgression(unittest.TestCase):

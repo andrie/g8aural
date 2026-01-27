@@ -17,8 +17,8 @@ import sys
 import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from modules.music_theory.progression import ChordProgressionGenerator
-from modules.music_theory.cadences import CadenceType
+from src.music_theory.progression import ChordProgressionGenerator
+from src.music_theory.cadences import CadenceType
 
 try:
     import pytest
@@ -101,13 +101,13 @@ class TestInversionDisplay:
                             f"Third inversion seventh chord should have '42', got: {symbol}"
 
     def test_perfect_cadence_inversions(self):
-        """Test Perfect cadence (Ic-V-I) displays correct inversions."""
+        """Test Perfect cadence (Ic-V-I) displays correct inversions (Grade 8 mode)."""
         generator = ChordProgressionGenerator(
             use_voice_leading=True,
             use_sevenths=True,
             use_corpus=False,
             keys=['C'],
-            use_strict_cadence=False
+            use_strict_cadence=True  # Grade 8 mode allows inversions
         )
 
         prog = generator.generate_progression(CadenceType.PERFECT)
@@ -115,15 +115,16 @@ class TestInversionDisplay:
         symbols = generator.progression_to_symbols(prog, include_inversions=True)
         inversions = generator.progression_to_inversions(prog, midi)
 
-        # Perfect cadence: Ic-V-I
-        # Chord 1 should be Ic (second inversion)
-        assert inversions[0] == 2, f"First chord should be second inversion, got {inversions[0]}"
-        assert 'c' in symbols[0], f"First chord should show 'c' for second inversion, got {symbols[0]}"
+        # In hybrid mode, there are lead-in chords before the 3-chord cadence
+        # The cadence (Ic-V-I) is in the LAST 3 chords
+        # Cadence chord 1 should be Ic (second inversion)
+        assert inversions[-3] == 2, f"Cadence first chord should be second inversion, got {inversions[-3]}"
+        assert 'c' in symbols[-3], f"Cadence first chord should show 'c' for second inversion, got {symbols[-3]}"
 
-        # Chord 3 should be I (root position)
-        assert inversions[2] == 0, f"Last chord should be root position, got {inversions[2]}"
-        assert not ('6' in symbols[2] or 'c' in symbols[2]), \
-            f"Last chord should be root position (no suffix), got {symbols[2]}"
+        # Cadence chord 3 should be I (root position)
+        assert inversions[-1] == 0, f"Last chord should be root position, got {inversions[-1]}"
+        assert not ('6' in symbols[-1] or 'c' in symbols[-1]), \
+            f"Last chord should be root position (no suffix), got {symbols[-1]}"
 
     def test_plagal_cadence_inversions(self):
         """Test Plagal cadence (I-IV-I) displays correct inversions."""
@@ -298,13 +299,13 @@ class TestInversionDisplay:
                 f"Key {key}: Symbol count mismatch"
 
     def test_inversion_label_consistency(self):
-        """Test that inversion labels are consistently applied across multiple generations."""
+        """Test that inversion labels are consistently applied across multiple generations (Grade 8 mode)."""
         generator = ChordProgressionGenerator(
             use_voice_leading=True,
             use_sevenths=True,
             use_corpus=False,
             keys=['C'],
-            use_strict_cadence=False
+            use_strict_cadence=True  # Grade 8 mode allows inversions
         )
 
         # Generate the same cadence type multiple times
@@ -314,11 +315,12 @@ class TestInversionDisplay:
             symbols = generator.progression_to_symbols(prog, include_inversions=True)
             inversions = generator.progression_to_inversions(prog, midi)
 
-            # First chord should always be second inversion (Ic)
-            assert inversions[0] == 2, \
-                f"Perfect cadence first chord should be second inversion, got {inversions[0]}"
-            assert 'c' in symbols[0], \
-                f"Perfect cadence first chord should show 'c', got {symbols[0]}"
+            # In hybrid mode, the cadence is the last 3 chords
+            # Cadence first chord should always be second inversion (Ic)
+            assert inversions[-3] == 2, \
+                f"Perfect cadence first chord should be second inversion, got {inversions[-3]}"
+            assert 'c' in symbols[-3], \
+                f"Perfect cadence first chord should show 'c', got {symbols[-3]}"
 
     def test_include_inversions_flag(self):
         """Test that include_inversions=False removes inversion labels."""

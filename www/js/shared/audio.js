@@ -2,6 +2,7 @@
  * Shared audio module for Tone.js integration.
  * Used by both the main app and chord_test_app.
  */
+console.log("[Audio] audio.js loaded");
 
 let piano = null;
 let isAudioInitialized = false;
@@ -14,12 +15,18 @@ const AUDIO_QUALITY = "sampled";
  * @returns {Promise} - Resolves when audio is initialized
  */
 async function initAudio() {
-    if (isAudioInitialized) return;
+    if (isAudioInitialized) {
+        console.log("[Audio] Already initialized");
+        return;
+    }
 
     try {
+        console.log("[Audio] Starting Tone.js...");
         await Tone.start();
+        console.log("[Audio] Tone.js started, context state:", Tone.context.state);
 
         if (AUDIO_QUALITY === "sampled") {
+            console.log("[Audio] Creating sampler...");
             piano = new Tone.Sampler({
                 urls: {
                     "C4": "C4.mp3",
@@ -31,7 +38,9 @@ async function initAudio() {
             }).toDestination();
             piano.volume.value = -12; // Reduce volume (dB)
 
+            console.log("[Audio] Waiting for samples to load...");
             await Tone.loaded();
+            console.log("[Audio] Samples loaded");
         } else {
             piano = new Tone.PolySynth(Tone.Synth, {
                 oscillator: {
@@ -91,20 +100,31 @@ async function playProgression(progression, options = {}) {
     const onComplete = options.onComplete || null;
     const useScheduling = options.useScheduling !== false;
 
+    console.log("[Audio] playProgression called with:", progression?.length, "chords");
+
+    if (!progression || !Array.isArray(progression) || progression.length === 0) {
+        console.error("[Audio] Invalid progression data:", progression);
+        return;
+    }
+
     try {
         // Initialize audio if needed
         if (!isAudioInitialized) {
+            console.log("[Audio] Initializing audio...");
             if (typeof Shiny !== 'undefined' && Shiny && AUDIO_QUALITY === "sampled") {
                 Shiny.setInputValue("audio_loading", true, { priority: "event" });
             }
         }
 
         await initAudio();
+        console.log("[Audio] Audio initialized, piano:", piano ? "ready" : "null");
 
         // Resume audio context if needed
         if (Tone.context.state !== 'running') {
+            console.log("[Audio] Resuming audio context...");
             await Tone.context.resume();
         }
+        console.log("[Audio] Audio context state:", Tone.context.state);
 
         // Stop any existing playback
         Tone.Transport.stop();
@@ -114,10 +134,12 @@ async function playProgression(progression, options = {}) {
         const chordNames = progression.map(chord =>
             chord.map(midi => midiToNoteName(midi))
         );
+        console.log("[Audio] First chord notes:", chordNames[0]);
 
         if (useScheduling) {
             // Use Tone.js scheduling (more precise timing)
             const now = Tone.now();
+            console.log("[Audio] Using scheduling, now:", now, "beatDuration:", beatDuration);
 
             chordNames.forEach((chord, index) => {
                 const startTime = now + index * beatDuration;
@@ -130,8 +152,10 @@ async function playProgression(progression, options = {}) {
                 }
 
                 // Play the chord
+                console.log("[Audio] Scheduling chord", index, "at", startTime, ":", chord);
                 piano.triggerAttackRelease(chord, "1n", startTime);
             });
+            console.log("[Audio] All chords scheduled");
 
             // Schedule completion callback
             const totalDuration = chordNames.length * beatDuration;
@@ -200,16 +224,22 @@ function isReady() {
 
 // Register default Shiny handlers (can be overridden by app-specific scripts)
 function registerDefaultAudioHandlers() {
-    if (typeof Shiny === 'undefined' || !Shiny) return;
+    if (typeof Shiny === 'undefined' || !Shiny) {
+        console.log("[Audio] Shiny not available, skipping handler registration");
+        return;
+    }
 
     try {
         Shiny.addCustomMessageHandler("playProgression", function(message) {
+            console.log("[Audio] Received playProgression message:", message);
             playProgression(message.progression, {
                 beatDuration: message.beatDuration || 1.0,
                 useScheduling: true
             });
         });
+        console.log("[Audio] playProgression handler registered");
     } catch (e) {
+        console.log("[Audio] Handler registration error:", e.message);
         // Handler already registered by app-specific script
     }
 }

@@ -3,21 +3,21 @@ Sharp Ear - Shiny for Python Frontend
 """
 from shiny import App, ui, reactive, render
 from pathlib import Path
-from config.app_config import CADENCE_TYPES_BY_GRADE, GENERATOR_CONFIG, VOICE_CONFIG_BY_GRADE
-from lib.music_theory.enhanced_progression import EnhancedChordProgressionGenerator
-from state.app_state import AppState
-from state.cadence_state import ProgressionState, FeedbackState, GameFlowState
-from state.voice_state import VoiceState
+from src.config.app_config import CADENCE_TYPES_BY_GRADE, GENERATOR_CONFIG, VOICE_CONFIG_BY_GRADE
+from src.music_theory.enhanced_progression import EnhancedChordProgressionGenerator
+from src.state.app_state import AppState
+from src.state.cadence_state import ProgressionState, FeedbackState, GameFlowState
+from src.state.voice_state import VoiceState
 
 # Server-side handlers - direct imports instead of module imports
-from modules.cadence.handlers import (
+from src.cadence.handlers import (
     validate_guess,
     handle_correct_answer,
     handle_incorrect_answer,
     initialize_new_cadence,
     generate_new_cadence_data
 )
-from modules.voice.handlers import (
+from src.voice.handlers import (
     generate_voice_melody,
     replay_voice_melody
 )
@@ -515,7 +515,7 @@ def app_server(input, output, session):
             return
 
         try:
-            from lib.music_theory.voice_analysis import (
+            from src.music_theory.voice_analysis import (
                 melody_to_pitch_contour,
                 hz_to_midi,
                 apply_median_filter,
@@ -654,7 +654,7 @@ def app_server(input, output, session):
 
             # Create pitch plot
             try:
-                from lib.music_theory.voice_analysis import create_pitch_plot
+                from src.music_theory.voice_analysis import create_pitch_plot
 
                 # Apply octave shift to recorded data for visualization
                 shifted_recorded_for_plot = recorded_midi_filtered + best_octave_shift

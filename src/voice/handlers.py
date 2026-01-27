@@ -6,8 +6,8 @@ This module contains extracted business logic functions for voice singing.
 import random
 import logging
 from typing import Dict, Any
-from config.app_config import VOICE_CONFIG_BY_GRADE
-from lib.music_theory.cadences import CadenceType
+from src.config.app_config import VOICE_CONFIG_BY_GRADE
+from src.music_theory.cadences import CadenceType
 
 logger = logging.getLogger(__name__)
 
